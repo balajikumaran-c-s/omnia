@@ -52,7 +52,6 @@ def _assert_result(test_log, component, result):
     )
 
 
-@pytest.mark.sanity
 @pytest.mark.order(30101)
 def test_provision_reports(host):
     """Verify the provision report and generated inventory contracts."""
