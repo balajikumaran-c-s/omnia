@@ -158,6 +158,32 @@ def _q(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
 
+def _scalar(prefix: str, text: str, cont: str, width: int = 110) -> str:
+    """Return `prefix` + the quoted text, folded over several lines when it is long.
+
+    A single-quoted scalar folds a line break into one space, so the text is broken at its
+    spaces; a text without spaces uses a double-quoted scalar with a backslash continuation.
+    """
+    if len(prefix) + len(text) + 2 <= width:
+        return prefix + _q(text)
+    if " " in text:
+        segments: List[str] = []
+        current = ""
+        for word in text.replace("'", "''").split(" "):
+            candidate = f"{current} {word}" if current else word
+            lead = len(prefix) if not segments else len(cont)
+            if current and lead + len(candidate) + 1 > width:
+                segments.append(current)
+                current = word
+            else:
+                current = candidate
+        segments.append(current)
+        return prefix + "'" + ("\n" + cont).join(segments) + "'"
+    room = width - len(cont) - 2
+    chunks = [text[i:i + room] for i in range(0, len(text), room)]
+    return prefix + '"' + ("\\\n" + cont).join(chunks) + '"'
+
+
 def _domain_condition(domain: str) -> str:
     return f'($DOMAINS == "default" || $DOMAINS =~ /{domain}/)'
 
@@ -173,7 +199,7 @@ def _job(name: str, stage: str, script: Sequence[str], conditions: Sequence[str]
     if allow_failure is not None:
         lines.append(f"  allow_failure: {str(allow_failure).lower()}")
     if variables:
-        lines += ["  variables:"] + [f"    {k}: {_q(v)}" for k, v in variables.items()]
+        lines += ["  variables:"] + [_scalar(f"    {k}: ", v, "      ") for k, v in variables.items()]
     if id_tokens:
         lines += ["  id_tokens:", "    VAULT_ID_TOKEN:", "      aud: $BAO_SERVER_URL"]
     if needs or optional:
@@ -182,7 +208,7 @@ def _job(name: str, stage: str, script: Sequence[str], conditions: Sequence[str]
         lines += [f"    - job: {n}\n      artifacts: true\n      optional: true" for n in optional]
     lines.append("  rules:")
     lines += [f"    - if: {_q(f'$SKIP_STAGES =~ /{skip or name}/')}", "      when: never"]
-    lines += [f"    - if: {_q(c)}\n      when: {when}" for c in conditions]
+    lines += [_scalar("    - if: ", c, "        ") + f"\n      when: {when}" for c in conditions]
     if artifacts:
         lines += ["  artifacts:", "    when: always", "    expire_in: 1 week", "    paths:"]
         lines += [f"      - {a}" for a in artifacts]
@@ -209,7 +235,7 @@ def render() -> str:
             "default:", "  retry:", "    max: 1", "    when:"]
     out += [f"      - {w}" for w in RETRY_WHEN]
     out += ["  before_script:", f"    - {_q(BEFORE_SCRIPT)}", "  after_script:"]
-    out += [f"    - {_q(a)}" for a in AFTER_SCRIPT]
+    out += [_scalar("    - ", a, "      ") for a in AFTER_SCRIPT]
     out += ["  artifacts:", "    when: always", "    expire_in: 1 week", "    paths:",
             "      - pipeline_job_status/", ""]
 
