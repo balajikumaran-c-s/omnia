@@ -21,6 +21,19 @@ Start here → **[Quick Start Guide](QUICKSTART.md)**
 - Configure JWT authentication for GitLab
 - Troubleshoot OpenBao issues
 
+### 🧭 **How Does the Cluster Pipeline Work?**
+→ **[Cluster Pipeline](CLUSTER_PIPELINE.md)**
+- The flow, stage by stage, and what a failed cleanup does
+- Inputs, domain stages, credentials and test stages
+- NFS share cleanup and its safety rules
+- SSH, secrets, summary and email
+
+### 🧩 **Changing the Pipeline?**
+→ **[Development Guide](DEVELOPMENT.md)**
+- Layout of the sources and what runs where
+- Regenerating the cluster pipeline, adding a domain
+- Unit tests and lint
+
 ### 🎯 **Choosing Deployment Strategy?**
 → **[Pipeline Modes & Domains](PIPELINE_MODES.md)**
 - Understand `default`, `deploy`, and `cleanup` modes
@@ -121,14 +134,12 @@ Each cluster runs as a completely independent child pipeline. If one cluster fai
 Parent Pipeline (.gitlab-ci.yml)
     ↓
     ├─→ Child Pipeline 1 (.gitlab-ci-cluster.yml) for cluster1
-    │   ├─ initialization
-    │   ├─ setup_environment
-    │   ├─ cleanup_<domains>
-    │   ├─ deploy_<domains>
-    │   ├─ discovery (if ENABLE_DISCOVERY=true)
-    │   ├─ test_<domains>
-    │   ├─ cleanup_discovery
-    │   └─ summary
+    │   ├─ initialization, setup_environment, nfs_check
+    │   ├─ cleanup_<domains>, cleanup_omnia (+ Slurm/K8s NFS shares)
+    │   ├─ setup_main (omnia.sh -s), test_main_installation
+    │   ├─ inputs (all domains)
+    │   ├─ <domains> (exec mode) and test_<domains>
+    │   └─ summary (table + email)
     │
     ├─→ Child Pipeline 2 (.gitlab-ci-cluster.yml) for cluster2
     │   └─ (same stages as cluster1)

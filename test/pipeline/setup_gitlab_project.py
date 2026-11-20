@@ -84,6 +84,7 @@ import argparse
 import json
 import os
 import re
+import subprocess  # nosec B404  # ssh-keyscan and ssh-keygen, fixed argument lists
 import sys
 import time
 from pathlib import Path
@@ -375,6 +376,41 @@ def load_pipeline_config(config_path):
                 variables[f"{prefix}_{var_suffix}"] = str(val)
 
     return cluster_names, variables
+
+
+def _scan_host_key(address):
+    """Return the ssh-keyscan lines of an OIM ("" when it does not answer)."""
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{1,253}", address):
+        return ""
+    try:
+        done = subprocess.run(  # nosec B603 B607  # fixed list, address checked above
+            ["ssh-keyscan", "-T", "10", "-t", "ed25519,ecdsa,rsa", address],
+            capture_output=True, text=True, timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return "\n".join(line for line in done.stdout.splitlines()
+                     if line.strip() and not line.startswith("#"))
+
+
+def store_host_keys(client, project_id, variables):
+    """--scan-host-keys: store each cluster's OIM host key as <CLUSTER>_SSH_KNOWN_HOSTS (File).
+
+    The pipeline jobs refuse to connect to an OIM whose host key is not known.
+    """
+    print("\nStoring the OIM host keys (ssh-keyscan from this machine)")
+    for key, address in variables.items():
+        if not key.endswith("_TARGET_IP") or not address:
+            continue
+        prefix = key[:-len("_TARGET_IP")]
+        lines = _scan_host_key(str(address))
+        if not lines:
+            print(f"  {prefix}: ssh-keyscan found no host key at {address} (is ssh-keyscan "
+                  "installed and port 22 reachable from here?)")
+            continue
+        state = client.set_variable(project_id, f"{prefix}_SSH_KNOWN_HOSTS", lines,
+                                    var_type="file", protected=True)
+        print(f"  {state} {prefix}_SSH_KNOWN_HOSTS (File, protected)")
+        print("    compare with the OIM: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub")
 
 
 def apply_config_variables(client, project_id, variables):
@@ -764,6 +800,7 @@ def generate_cluster_trigger_job(cluster_name):
     upper_prefix = cluster_name.upper()
     return f"""trigger_cluster_{prefix}:
   stage: trigger
+  resource_group: pipeline-{prefix}
   trigger:
     include:
       - local: .gitlab-ci-cluster.yml
@@ -812,6 +849,7 @@ def generate_cluster_utils_trigger_job(cluster_name):
     upper_prefix = cluster_name.upper()
     return f"""trigger_cluster_{prefix}_utils:
   stage: trigger
+  resource_group: pipeline-{prefix}
   trigger:
     include:
       - local: .gitlab-ci-utils.yml
@@ -845,6 +883,7 @@ def generate_cluster_build_stream_trigger_job(cluster_name):
     upper_prefix = cluster_name.upper()
     return f"""trigger_cluster_{prefix}_build_stream:
   stage: trigger
+  resource_group: pipeline-{prefix}
   trigger:
     include:
       - local: .gitlab-ci-build-stream.yml
@@ -1160,6 +1199,8 @@ def cmd_create(args, client):
     if config_vars:
         # ---- Config-file mode: apply all variables from pipeline_config.yml
         apply_config_variables(client, project_id, config_vars)
+        if getattr(args, "scan_host_keys", False):
+            store_host_keys(client, project_id, config_vars)
 
         # Also set global defaults that aren't in the config file
         global_keys = [
@@ -1371,6 +1412,8 @@ def cmd_update(args, client):
         print(f"\nApplying variables from config: {args.config}")
         apply_config_variables(client, project_id, config_vars)
         print(f"  {len(config_vars)} variables applied")
+        if getattr(args, "scan_host_keys", False):
+            store_host_keys(client, project_id, config_vars)
     elif args.update_vars:
         print("\nUpdating CI/CD variables (defaults)...")
 
@@ -1881,6 +1924,9 @@ def main():
                         help="Path to pipeline_config.yml used to set CI/CD variables")
 
     # Update options
+    parser.add_argument("--scan-host-keys", action="store_true",
+                        help="--create/--update with --config: store each cluster's OIM host key "
+                             "(ssh-keyscan) as <CLUSTER>_SSH_KNOWN_HOSTS, which the jobs require")
     parser.add_argument("--update-vars", action="store_true",
                         help="Also update CI/CD variables when using --update")
 

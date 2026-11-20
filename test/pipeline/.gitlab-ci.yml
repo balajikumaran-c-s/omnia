@@ -113,7 +113,7 @@
 #   Valid values: repo_manager, image_build_manager, discovery, orchestrator, telemetry,
 #                 setup_environment, setup_main, test (skips all test_* stages)
 #
-# Per-stage ansible tags (global, applied to all clusters):
+# Per-stage FVT tags run in exec mode, comma separated (global, applied to all clusters):
 #   REPO_MANAGER_TAGS, IMAGE_BUILD_MANAGER_TAGS, ORCHESTRATOR_TAGS, DISCOVERY_TAGS, TELEMETRY_TAGS
 #
 # Repository layout in GitLab:
@@ -163,6 +163,7 @@ stages:
 # ---------------------------------------------------------------------------
 trigger_cluster_cluster1:
   stage: trigger
+  resource_group: pipeline-cluster1
   trigger:
     include:
       - local: .gitlab-ci-cluster.yml
@@ -212,6 +213,7 @@ trigger_cluster_cluster1:
 # ---------------------------------------------------------------------------
 trigger_cluster_cluster1_utils:
   stage: trigger
+  resource_group: pipeline-cluster1
   trigger:
     include:
       - local: .gitlab-ci-utils.yml
@@ -246,6 +248,7 @@ trigger_cluster_cluster1_utils:
 # ---------------------------------------------------------------------------
 trigger_cluster_cluster1_build_stream:
   stage: trigger
+  resource_group: pipeline-cluster1
   trigger:
     include:
       - local: .gitlab-ci-build-stream.yml
