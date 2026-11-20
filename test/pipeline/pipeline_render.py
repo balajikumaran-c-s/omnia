@@ -38,7 +38,7 @@ CLEANUP_ORDER = ("build_stream", "utils", "telemetry", "orchestrator", "discover
                  "image_build_manager", "repo_manager")
 TOLERATED_CLEANUPS = ("utils", "discovery")
 DEPLOY_ORDER = ("repo_manager", "image_build_manager", "discovery", "orchestrator", "telemetry")
-RETRY_WHEN = ("runner_system_failure", "stuck_or_timeout_failure", "api_failure")
+RETRY_WHEN = ("runner_system_failure", "api_failure", "scheduler_failure")
 ANY_MODE = '$PIPELINE_MODE == "default" || $PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "deploy"'
 CLEANUP_MODE = '($PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "default")'
 DEPLOY_MODE = '($PIPELINE_MODE == "deploy" || $PIPELINE_MODE == "default")'

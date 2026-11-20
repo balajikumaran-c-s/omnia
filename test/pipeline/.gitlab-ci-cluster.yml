@@ -83,8 +83,8 @@ default:
     max: 1
     when:
       - runner_system_failure
-      - stuck_or_timeout_failure
       - api_failure
+      - scheduler_failure
   before_script:
     - 'git fetch origin "$CI_COMMIT_REF_NAME" 2>/dev/null && git checkout "origin/$CI_COMMIT_REF_NAME" -- clusters/ 2>/dev/null || true'
   after_script:

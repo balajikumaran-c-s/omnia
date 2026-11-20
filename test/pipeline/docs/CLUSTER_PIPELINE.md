@@ -196,8 +196,8 @@ banner in the log but does not change the result of the pipeline.
 ## Runs
 
 - One pipeline per cluster at a time: the trigger jobs use `resource_group: pipeline-<cluster>`.
-- A job is retried once after a runner system failure, a stuck or timed out job or an API
-  failure. A failing script is not retried.
+- A job is retried once after a runner system failure, an API failure or a scheduler failure. A
+  failing script and a timed out job are not retried.
 - Artifacts expire after one week. Each job times out after 3 hours.
 
 ---
