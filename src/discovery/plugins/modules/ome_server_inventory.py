@@ -81,6 +81,15 @@ options:
         required: false
         type: bool
         default: false
+    api_prefix:
+        description:
+            - REST API prefix of the server. Dell OpenManage Enterprise serves it under C(/api),
+              Dell Polaris under C(/api/v1).
+            - Must be C(/api/v1) or C(/api).
+            - When omitted or empty the module logs in to C(/api/v1) first and then to C(/api),
+              and uses the prefix that accepts the session request.
+        required: false
+        type: str
     page_size:
         description:
             - Number of devices to request per page from OME OData API.
@@ -135,8 +144,13 @@ class OMEClient:
     # Initial backoff delay in seconds; doubles on each retry
     BACKOFF_BASE = 2
 
-    def __init__(self, ip, username, password, verify_ssl=False, page_size=200, module=None):
+    API_PREFIXES = ("/api/v1", "/api")
+
+    def __init__(self, ip, username, password, verify_ssl=False, page_size=200, module=None,
+                 api_prefix=None):
         self.base_url = f"https://{ip}"
+        self.api_prefix = api_prefix or None
+        self.auth_status = None
         self.username = username
         self.password = password
         self.verify_ssl = verify_ssl
@@ -153,33 +167,50 @@ class OMEClient:
             else:
                 logger.warning("SSL verification disabled — connections are not secure")
 
+    @property
+    def api_url(self):
+        """Base URL of the REST API, for example https://<ip>/api/v1."""
+        return f"{self.base_url}{self.api_prefix or self.API_PREFIXES[-1]}"
+
     def authenticate(self):
-        """Authenticate with OME and obtain session token."""
-        auth_url = f"{self.base_url}/api/SessionService/Sessions"
+        """Authenticate with OME or Polaris and obtain the session token.
+
+        Without an explicit api_prefix the prefixes are tried in order (/api/v1, then /api):
+        a 404 means the server does not use that prefix, any other answer ends the search so
+        that rejected credentials are not mistaken for a missing endpoint.  The HTTP status of
+        the last attempt is kept in auth_status.
+        """
         auth_payload = {
             "UserName": self.username,
             "Password": self.password,
             "SessionType": "API"
         }
         headers = {"Content-Type": "application/json"}
-
+        candidates = [self.api_prefix] if self.api_prefix else list(self.API_PREFIXES)
         try:
-            response = self.session.post(auth_url, json=auth_payload, headers=headers)
+            for prefix in candidates:
+                auth_url = f"{self.base_url}{prefix}/SessionService/Sessions"
+                response = self.session.post(auth_url, json=auth_payload, headers=headers)
+                self.auth_status = response.status_code
+                if response.status_code in [200, 201]:
+                    self.api_prefix = prefix
+                    self.auth_token = response.headers.get("X-Auth-Token")
+                    self.session.headers.update({"X-Auth-Token": self.auth_token})
+                    logger.info("Authenticated with %s using API prefix %s", self.base_url, prefix)
+                    return True
+                if response.status_code != 404:
+                    return False
+            return False
         finally:
             # Clear password from memory after authentication attempt
             self.password = None
             del auth_payload
-        if response.status_code in [200, 201]:
-            self.auth_token = response.headers.get("X-Auth-Token")
-            self.session.headers.update({"X-Auth-Token": self.auth_token})
-            return True
-        return False
 
     def logout(self):
         """Logout and invalidate the session."""
         if self.auth_token:
             try:
-                logout_url = f"{self.base_url}/api/SessionService/Sessions('current')"
+                logout_url = f"{self.api_url}/SessionService/Sessions('current')"
                 self.session.delete(logout_url)
             except Exception:
                 pass
@@ -287,7 +318,7 @@ class OMEClient:
         Returns:
             tuple: (devices, pagination_stats)
         """
-        url = f"{self.base_url}/api/DeviceService/Devices"
+        url = f"{self.api_url}/DeviceService/Devices"
         devices, pagination_stats = self.get_paginated(url)
         if device_type:
             filtered = [d for d in devices if d.get("Type") == device_type]
@@ -298,7 +329,7 @@ class OMEClient:
 
     def get_device_inventory(self, device_id, inventory_type):
         """Get specific inventory type for a device."""
-        url = f"{self.base_url}/api/DeviceService/Devices({device_id})/InventoryDetails('{inventory_type}')"
+        url = f"{self.api_url}/DeviceService/Devices({device_id})/InventoryDetails('{inventory_type}')"
         try:
             response = self.session.get(url)
             if response.status_code == 200:
@@ -314,7 +345,7 @@ class OMEClient:
 
     def get_device_management_info(self, device_id):
         """Get device management info including iDRAC details."""
-        url = f"{self.base_url}/api/DeviceService/Devices({device_id})/DeviceManagement"
+        url = f"{self.api_url}/DeviceService/Devices({device_id})/DeviceManagement"
         response = self.session.get(url)
         if response.status_code == 200:
             return response.json().get("value", [])
@@ -337,7 +368,7 @@ class OMEClient:
         device_group_map = {}
         device_all_groups = {}
 
-        all_groups_url = f"{self.base_url}/api/GroupService/Groups"
+        all_groups_url = f"{self.api_url}/GroupService/Groups"
         all_groups, _ = self.get_paginated(all_groups_url)
 
         # Names of OME built-in container/system groups to always skip
@@ -375,7 +406,7 @@ class OMEClient:
             # Resolve relative to base_url and validate same-origin to prevent
             # SSRF / X-Auth-Token leak if OME returns a foreign absolute URL.
             nav_link = group.get("Devices@odata.navigationLink", "")
-            fallback_url = f"{self.base_url}/api/GroupService/Groups({group_id})/Devices"
+            fallback_url = f"{self.api_url}/GroupService/Groups({group_id})/Devices"
             if nav_link:
                 resolved_url = urljoin(self.base_url + "/", nav_link)
                 parsed = urlparse(resolved_url)
@@ -579,7 +610,8 @@ def main():
         "ome_password": {"type": "str", "required": True, "no_log": True},
         "device_type": {"type": "int", "required": False, "default": 1000},
         "verify_ssl": {"type": "bool", "required": False, "default": False},
-        "page_size": {"type": "int", "required": False, "default": 200}
+        "page_size": {"type": "int", "required": False, "default": 200},
+        "api_prefix": {"type": "str", "required": False, "default": None}
     }
 
     module = AnsibleModule(
@@ -594,6 +626,10 @@ def main():
     device_type = module.params['device_type']
     verify_ssl = module.params['verify_ssl']
     page_size = module.params['page_size']
+    api_prefix = module.params['api_prefix'] or None
+    if api_prefix and api_prefix not in OMEClient.API_PREFIXES:
+        module.fail_json(msg=(f"api_prefix must be one of {', '.join(OMEClient.API_PREFIXES)} "
+                              f"(or empty to detect it), got '{api_prefix}'"))
 
     client = OMEClient(
         ome_ip,
@@ -601,13 +637,22 @@ def main():
         module.params['ome_password'],
         verify_ssl,
         page_size,
-        module
+        module,
+        api_prefix
     )
 
     try:
         if not client.authenticate():
+            if client.auth_status == 404:
+                module.fail_json(msg=(
+                    f"OME/Polaris at {ome_ip} has no session endpoint under "
+                    f"{api_prefix or ', '.join(OMEClient.API_PREFIXES)} "
+                    "(HTTP 404). Check ome_ip points at the OpenManage Enterprise or Polaris "
+                    "console, or set ome_api_prefix."
+                ))
+            reason = (f"HTTP {client.auth_status}" if client.auth_status else "no response")
             module.fail_json(msg=(
-                f"Failed to authenticate with OME at {ome_ip}. "
+                f"Failed to authenticate with OME/Polaris at {ome_ip} ({reason}). "
                 "Please verify the ome_username and ome_password provided in "
                 "discovery_credentials.yml (managed via discovery_credentials role) and rerun the playbook."
             ))

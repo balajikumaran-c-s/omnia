@@ -40,3 +40,7 @@ ome_server_device_type: 1000
 
 # Number of devices per OData page when querying OME (1–1000)
 ome_page_size: 200
+
+# REST API prefix of the console: /api/v1 for Polaris, /api for OpenManage Enterprise.
+# Empty detects it (tries /api/v1, then /api).
+ome_api_prefix: ""
