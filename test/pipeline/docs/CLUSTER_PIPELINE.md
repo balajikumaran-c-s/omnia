@@ -81,8 +81,9 @@ A cleanup on an OIM without an Omnia venv (the very first run) finds nothing to 
 ## `pipeline_ci.py`
 
 The commands of the jobs, in the order of the pipeline. The clone itself is made by a small inline
-bootstrap in the `initialization` job (it removes `OMNIA_INSTALL_PATH`, clones `OMNIA_REPO` at
-`OMNIA_BRANCH`, and checks the host key policy like the helper does), because the helper does not
+bootstrap in the `initialization` job. It checks the host key policy like the helper does and
+checks out `OMNIA_REPO` at `OMNIA_BRANCH` on the OIM the way the SVT does (`update`, `recreate` or
+`keep`, below), because the helper does not
 exist before the clone. All of them need the cluster variables
 `<CLUSTER>_TARGET_IP`, `_TARGET_USER`, `_TARGET_PASS`.
 
@@ -105,6 +106,24 @@ exist before the clone. All of them need the cluster variables
 
 Domain and tag names are checked against fixed lists and patterns before they reach a command.
 `DRY_RUN=true` makes every command print what it would run on the OIM and change nothing.
+
+---
+
+## The Omnia checkout on the OIM
+
+The `initialization` bootstrap checks out `OMNIA_REPO` at `OMNIA_BRANCH` into `OMNIA_INSTALL_PATH` on
+the OIM, with the same modes as the SVT. The mode is the project variable
+`<CLUSTER>_CHECKOUT_MODE` (or `CHECKOUT_MODE`), default `update`:
+
+| Mode | What it does |
+|---|---|
+| `update` | Fetches and checks out the branch in the existing clone, or clones it when there is none |
+| `recreate` | Stops what still runs in the folder, deletes it and clones again. Refused for system folders |
+| `keep` | Uses the existing clone as it is (it must be a git checkout) |
+
+The OIM needs `git` and `python3`. Without them the stage stops with `install git and python3 on
+the OIM (it needs an enabled package repository)`. The helpers (`pipeline_ci.py`, `library/`) are
+then copied from that checkout into `ci_tools/` for the later jobs.
 
 ---
 

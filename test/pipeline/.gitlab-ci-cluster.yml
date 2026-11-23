@@ -159,14 +159,39 @@ initialization:
              "-o", "ConnectTimeout=" + os.environ.get("SSH_CONNECT_TIMEOUT", "30"), user + "@" + ip]
       env = dict(os.environ, SSHPASS=password)
       q = shlex.quote
-      clone = ("set -e\n"
-               "command -v git >/dev/null || dnf install -y git || yum install -y git || apt-get install -y git\n"
-               "rm -rf " + q(path) + "\n"
-               "mkdir -p " + q(os.path.dirname(path)) + "\n"
-               "git clone -b " + q(branch) + " " + q(repo) + " " + q(path) + "\n")
+      mode = os.environ.get(prefix + "_CHECKOUT_MODE") or os.environ.get("CHECKOUT_MODE") or "update"
+      if mode not in ("update", "recreate", "keep"):
+          fail("CHECKOUT_MODE must be update, recreate or keep, got " + repr(mode))
+      trees = ("/bin", "/boot", "/dev", "/etc", "/lib", "/lib64", "/opt/omnia", "/proc", "/run", "/sbin",
+               "/sys", "/usr", "/var")
+      if mode == "recreate" and any(path == t or path.startswith(t + "/") for t in trees):
+          fail("CHECKOUT_MODE recreate deletes the folder: " + path + " is a system folder, use a "
+               "folder of its own")
+      recreate = "\n".join([
+          'd="$1"',
+          'holders() { for p in /proc/[0-9]*; do pid=${p#/proc/}; [ "$pid" = "$$" ] && continue',
+          '  cwd=$(readlink "$p/cwd" 2>/dev/null); case "$cwd" in "$d"|"$d"/*) echo "$pid";; esac; done; }',
+          'pids=$(holders)',
+          'if [ -n "$pids" ]; then echo "stopping what still runs in $d: $(echo $pids)"',
+          '  kill -TERM $pids 2>/dev/null; sleep 3; kill -KILL $(holders) 2>/dev/null; sleep 1; fi',
+          'for try in 1 2 3 4 5; do rm -rf -- "$d" 2>/dev/null; [ -e "$d" ] || exit 0; sleep 2; done',
+          'echo "ERROR: $d could not be deleted. Still running there: $(echo $(holders))"',
+          'find "$d" -maxdepth 3 2>/dev/null | head -20; exit 1',
+      ])
+      qp, qr, qb = q(path), q(repo), q(branch)
+      clone = "mkdir -p " + q(os.path.dirname(path)) + " && git clone -b " + qb + " " + qr + " " + qp
+      script = {
+          "recreate": "bash -c " + q(recreate) + " _ " + qp + " && " + clone,
+          "update": ("if [ -d " + qp + "/.git ]; then cd " + qp + " && git remote set-url origin " + qr
+                     + " && git fetch origin " + qb + " && git checkout --force -B " + qb
+                     + " FETCH_HEAD; else " + clone + "; fi"),
+          "keep": "test -d " + qp + "/.git",
+      }[mode]
+      need = ("command -v git python3 >/dev/null || "
+              "{ echo 'git or python3 is missing on the OIM'; exit 127; }\n")
       for attempt in range(1, 6):
-          done = subprocess.run(ssh + ["bash", "-s"], input=clone.encode(), env=env, capture_output=True,
-                                check=False)
+          done = subprocess.run(ssh + ["bash", "-s"], input=(need + script + "\n").encode(), env=env,
+                                capture_output=True, check=False)
           rc = done.returncode
           out = (done.stdout + done.stderr).decode(errors="replace").replace(password, "********")
           sys.stdout.write(out)
@@ -175,11 +200,13 @@ initialization:
           print("SSH connection failed, retry " + str(attempt) + "/5 in 10s")
           time.sleep(10)
       if rc:
-          hint = {5: " - the OIM rejected the password, check the CI/CD variable " + prefix + "_TARGET_PASS",
-                  255: " - the OIM did not answer on SSH"}.get(rc, "")
+          hints = {5: " - the OIM rejected the password, check the CI/CD variable " + prefix + "_TARGET_PASS",
+                   255: " - the OIM did not answer on SSH",
+                   127: " - install git and python3 on the OIM (it needs an enabled package repository)"}
+          hint = hints.get(rc, "")
           last = ([x for x in out.splitlines() if x.strip()] or [""])[-1][:200]
-          fail("cloning " + repo + " (" + branch + ") on the OIM failed (exit code " + str(rc) + ")"
-               + hint + (": " + last if last else ""))
+          fail("checkout (" + mode + ") of " + repo + " (" + branch + ") on the OIM failed (exit code "
+               + str(rc) + ")" + hint + (": " + last if last else ""))
       os.makedirs("ci_tools", exist_ok=True)
       pack = subprocess.Popen(ssh + ["tar -C " + q(path) + "/test/pipeline --exclude=__pycache__ -cf - "
                                      "pipeline_ci.py library"], stdout=subprocess.PIPE, env=env)
@@ -189,7 +216,7 @@ initialization:
       if not os.path.isfile("ci_tools/pipeline_ci.py"):
           fail("the clone has no test/pipeline/pipeline_ci.py. HOW TO FIX: OMNIA_BRANCH of " + repo +
                " must be a branch that has the pipeline helpers")
-      print("Cloned " + repo + " (" + branch + ") to " + path + " and took the pipeline helpers from it")
+      print("Checkout (" + mode + ") of " + repo + " (" + branch + ") in " + path + ": took the pipeline helpers from it")
       PYEOF
     - python3 ci_tools/pipeline_ci.py initialize
 

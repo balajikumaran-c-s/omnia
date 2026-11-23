@@ -4,6 +4,19 @@ Common issues and solutions for the Omnia CI/CD pipeline.
 
 ---
 
+## Initialization Fails: git or python3 Missing on the OIM
+
+**Symptoms:** `checkout (update) of ... failed (exit code 127) - install git and python3 on the OIM`.
+
+**Cause:** the Omnia checkout is made on the OIM, like the SVT does, so the OIM needs `git` and
+`python3`. A freshly installed RHEL without a registered subscription or another enabled package
+repository has no `git` and cannot install it.
+
+**Solutions:** register the OIM or enable a repository (`dnf repolist` must list one), then install
+`git` and `python3`. Omnia itself (`omnia.sh -s`) needs the repository too.
+
+---
+
 ## Initialization Fails: Host Key Required
 
 **Symptoms:** `PIPELINE_SSH_KNOWN_HOSTS (a File variable with the OIM host key line) is required`.

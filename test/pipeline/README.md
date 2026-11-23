@@ -97,7 +97,7 @@ clusters/<cluster>/
 |---|---|
 | GitLab | 15.7 or later, CI/CD enabled, a runner with `python3` and `sshpass` |
 | Omnia branch | `OMNIA_REPO` and `OMNIA_BRANCH` must point at a branch that has `test/pipeline/pipeline_ci.py` |
-| OIM | RHEL or Rocky, SSH on port 22, a root user. `nfs-utils` if the NFS shares are emptied |
+| OIM | RHEL or Rocky with `git` and `python3`, SSH on port 22, a root user. `nfs-utils` if the NFS shares are emptied |
 | OpenBao | Unsealed, reachable from the runner (port 8200), JWT login for GitLab |
 | Your machine | Python 3 with `pyyaml` and `requests` (for `setup_gitlab_project.py`), and `ssh-keyscan` |
 
