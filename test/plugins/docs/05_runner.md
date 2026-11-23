@@ -182,8 +182,10 @@ result = run_playbook(
   argument, the environment variable `OMNIA_ANSIBLE_VERBOSITY` (0 to 4), the setting
   `default_verbosity` (1). `./run_validation.sh fvt_<domain> ... --ansible-verbosity <0-4>` sets
   the variable for that run.
-- **Full playbook.** `./run_validation.sh fvt_<domain> exec --full-playbook` runs the `full_playbook`
-  tag: the complete domain playbook once, without `--tags`. The tag calls
+- **Full playbook.** `./run_validation.sh fvt_<domain> exec --full-playbook` runs
+  `fvt/test_playbook.py`, the one test file directly under `fvt/` (a tag folder holds its own
+  `test_playbook.py`; the no-tag run has no folder): the complete domain playbook once, without
+  `--tags`. The test calls
   `omnia_auto.run_full_playbook_test(run_playbook, "<playbook>.yml", title, tc_id)` with the
   domain's own `run_playbook` wrapper. It is explicit only and supports `exec` only.
 - **Playbook output in the report.** `run_playbook` keeps its output for the running test

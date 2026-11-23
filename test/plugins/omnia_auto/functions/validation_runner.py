@@ -34,7 +34,7 @@ import yaml
 
 from .formatting_func import Colors, _render_summary
 from ..vars.validation_vars import (
-    ANSIBLE_VERBOSITY_ENV, COMMANDS, FULL_PLAYBOOK_TAG,
+    ANSIBLE_VERBOSITY_ENV, COMMANDS, FULL_PLAYBOOK_FILE, FULL_PLAYBOOK_TAG,
 )
 
 # Regex for safe identifiers from config YAML (no shell metacharacters)
@@ -425,9 +425,12 @@ class ValidationRunner:
                     f"{self.cat_fvt} exec --full-playbook (without a tag)"
                 )
                 return 2
-            if FULL_PLAYBOOK_TAG not in tags:
+            if not os.path.isfile(
+                os.path.join(self.fvt_dir, FULL_PLAYBOOK_FILE),
+            ):
                 _err(
-                    f"{self.cat_fvt} has no '{FULL_PLAYBOOK_TAG}' scenario"
+                    f"{self.cat_fvt} has no fvt/{FULL_PLAYBOOK_FILE} "
+                    "(the complete playbook scenario)"
                 )
                 return 2
             tag = FULL_PLAYBOOK_TAG
@@ -435,7 +438,7 @@ class ValidationRunner:
             _err(f"'{FULL_PLAYBOOK_TAG}' supports exec only")
             return 2
 
-        if tag and not os.path.isdir(
+        if tag and tag != FULL_PLAYBOOK_TAG and not os.path.isdir(
             os.path.join(self.fvt_dir, tag),
         ):
             _err(f"Tag '{tag}' not found in fvt/")
@@ -664,10 +667,13 @@ class ValidationRunner:
             return 0
 
         os.environ["OMNIA_COMMAND_TYPE"] = "exec"
-        exec_path = (
-            os.path.join(self.fvt_dir, tag) if tag
-            else os.path.join(self.fvt_dir, "build")
-        )
+        if tag == FULL_PLAYBOOK_TAG:
+            exec_path = os.path.join(self.fvt_dir, FULL_PLAYBOOK_FILE)
+        else:
+            exec_path = (
+                os.path.join(self.fvt_dir, tag) if tag
+                else os.path.join(self.fvt_dir, "build")
+            )
         if tag and suite:
             tag_dir = Path(self.fvt_dir, tag)
             suite_path = str(Path(tag_dir, suite).resolve(strict=True))
@@ -1609,7 +1615,7 @@ class ValidationRunner:
         print("  --debug           Full debug (-vvs)")
         print("  --ansible-verbosity <0-4>  Ansible verbosity of every playbook")
         print(f"  --full-playbook   exec: run the complete playbook "
-              f"(tag {FULL_PLAYBOOK_TAG}, no --tags)")
+              f"(fvt/{FULL_PLAYBOOK_FILE}, no --tags)")
         print()
         self._print_suite_exec_owner_help()
         f = self.cat_fvt

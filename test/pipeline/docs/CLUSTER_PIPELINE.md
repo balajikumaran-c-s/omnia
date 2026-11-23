@@ -152,7 +152,7 @@ stops at the first failure:
 list such as `prepare,execute`) runs exactly those tags, one `./run_validation.sh fvt_<domain>
 <tag> exec` each; every tag is `ansible-playbook <domain>.yml --tags <tag>`. With no tags the
 **complete playbook** runs once without `--tags`: `./run_validation.sh fvt_<domain> exec
---full-playbook` (the `full_playbook` tag, which every domain with a playbook has: repo_manager,
+--full-playbook` (the single file `fvt/test_playbook.py`, directly under `fvt/`, which every domain with a playbook has: repo_manager,
 image_build_manager, discovery, orchestrator, telemetry, build_stream; it is explicit only and not
 part of any default run; utils has none because `utils.yml` is meant to run one tag at a time).
 

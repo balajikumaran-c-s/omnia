@@ -47,7 +47,6 @@ FVT_TAGS: List[str] = [
     "catalog_delete",
     "catalog_validate",
     "user_registry",
-    "full_playbook",
 ]
 
 # =====================================================================
@@ -84,7 +83,6 @@ SUITES: Dict[str, List[str]] = {
     "catalog_delete": ["delete"],
     "catalog_validate": ["validate"],
     "user_registry": ["validation"],
-    "full_playbook": [],
 }
 
 # Ordered, non-destructive lifecycle used by an untagged ``exec`` or ``test``.
@@ -118,5 +116,4 @@ EXCLUDE_TAGS: List[str] = [
     "catalog_add",
     "catalog_delete",
     "catalog_validate",
-    "full_playbook",
 ]

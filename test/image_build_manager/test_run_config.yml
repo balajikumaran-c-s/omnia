@@ -152,14 +152,6 @@ fvt_image_build_manager:
     dataset: ""
     sync_input: false
     sync_output: false
-  full_playbook:
-    run: false
-    command: "exec"
-    suite: ""
-    marker: ""
-    dataset: ""
-    sync_input: false
-    sync_output: false
 
 # =============================================================================
 # NFT — Non-Functional Tests

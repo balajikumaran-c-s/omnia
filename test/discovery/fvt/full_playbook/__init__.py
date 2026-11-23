@@ -1,1 +1,0 @@
-"""discovery full playbook scenario."""

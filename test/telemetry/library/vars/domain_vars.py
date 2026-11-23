@@ -47,7 +47,6 @@ FVT_TAGS: List[str] = [
     "cleanup_powerscale",
     "cleanup_ufm",
     "cleanup_vast",
-    "full_playbook",
 ]
 
 # =====================================================================
@@ -90,7 +89,6 @@ SUITES: Dict[str, List[str]] = {
     "cleanup_powerscale": [],
     "cleanup_ufm": [],
     "cleanup_vast": [],
-    "full_playbook": [],
 }
 
 # =====================================================================
@@ -131,5 +129,4 @@ EXCLUDE_TAGS: List[str] = [
     "cleanup_powerscale",
     "cleanup_ufm",
     "cleanup_vast",
-    "full_playbook",
 ]

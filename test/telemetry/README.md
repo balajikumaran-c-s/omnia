@@ -78,7 +78,7 @@ Run from inside the `test/telemetry/` directory:
 | `validate` | `--tags validate` | Input config and credentials validation |
 | `deploy` | `--tags deploy` | Deploy sinks + sources (Kafka, VM, VL, iDRAC, etc.) |
 | `deploy_sinks` | `--tags deploy_sinks` | Deploy sinks only (Kafka, VictoriaMetrics, VictoriaLogs) |
-| `full_playbook` | Complete `telemetry.yml` without `--tags`. Explicit only: `./run_validation.sh fvt_telemetry exec --full-playbook` |
+| (no tag) | Complete `telemetry.yml` without `--tags`: the single file `fvt/test_playbook.py`, directly under `fvt/` (every tag folder has its own `test_playbook.py`). Explicit only: `./run_validation.sh fvt_telemetry exec --full-playbook` |
 | `cleanup` | `--tags cleanup` | Cleanup all resources (pods, services, topics, PVCs) |
 | `cleanup_sinks` | `--tags cleanup_sinks` | Cleanup sinks only (with dependency blocking) |
 | `cleanup_idrac` | `--tags cleanup_idrac` | Cleanup iDRAC source only |

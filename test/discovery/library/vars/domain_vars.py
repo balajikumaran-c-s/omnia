@@ -41,7 +41,6 @@ FVT_TAGS: List[str] = [
     "execute",
     "discovery",
     "cleanup",
-    "full_playbook",
 ]
 
 # =====================================================================
@@ -66,7 +65,6 @@ SUITES: Dict[str, List[str]] = {
     "execute": ["output"],
     "discovery": ["output"],
     "cleanup": ["status"],
-    "full_playbook": [],
 }
 
 # =====================================================================
@@ -96,5 +94,4 @@ SUITE_EXEC_OWNERS: Dict[str, List[str]] = {}
 
 EXCLUDE_TAGS: List[str] = [
     "cleanup",
-    "full_playbook",
 ]

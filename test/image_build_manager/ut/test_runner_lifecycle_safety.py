@@ -107,7 +107,7 @@ def test_destructive_nft_marker_explicitly_enables_cleanup():
 
 
 def test_default_fvt_verification_excludes_cleanup_flows():
-    assert EXCLUDE_TAGS == ["cleanup", "cleanup_images", "full_playbook"]
+    assert EXCLUDE_TAGS == ["cleanup", "cleanup_images"]
 
 
 def test_catalog_reuse_e2e_owns_execution_and_restores_state():

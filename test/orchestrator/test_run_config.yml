@@ -66,15 +66,6 @@ fvt_orchestrator:
     sync_input: false
     sync_output: false
     sync_image_output: false
-  full_playbook:
-    run: false
-    command: "exec"
-    suite: ""
-    marker: ""
-    dataset: ""
-    sync_input: false
-    sync_output: false
-    sync_image_output: false
 
 # NFT is a separate destructive workflow. A complete run executes prepare and
 # provision, verifies repeat execution and security contracts, and finishes

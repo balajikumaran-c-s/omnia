@@ -31,7 +31,6 @@ FVT_TAGS: list[str] = [
     "provision",
     "pxeboot",
     "cleanup",
-    "full_playbook",
 ]
 
 # =====================================================================
@@ -137,7 +136,6 @@ SUITES: dict[str, list[str]] = {
         "artifacts",
         "credentials",
     ],
-    "full_playbook": [],
 }
 
 # Each lifecycle owns one playbook execution followed by independent checks.
@@ -156,4 +154,4 @@ SUITE_EXEC_OWNERS: dict[str, list[str]] = {}
 # Tags excluded from "all" verify (run only when explicit)
 # =====================================================================
 
-EXCLUDE_TAGS: list[str] = ["cleanup", "full_playbook"]
+EXCLUDE_TAGS: list[str] = ["cleanup"]

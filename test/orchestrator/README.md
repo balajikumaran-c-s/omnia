@@ -214,7 +214,7 @@ operations and includes destructive prepare, provision, and cleanup cases.
 | `prepare` | `openchami`, `network`, `openldap` | OpenCHAMI, PostgreSQL, networking, DNS/DHCP, and local OpenLDAP readiness |
 | `provision` | `openchami` | Provision reports plus SMD, Boot Service, Metadata Service, and network inventory |
 | `pxeboot` | See `SUITES` in `library/vars/domain_vars.py` | Node boot completion, node features, and workload-cluster behavior; reboot and node-removal suites run last |
-| `full_playbook` | Complete `orchestrator.yml` without `--tags`. Explicit only: `./run_validation.sh fvt_orchestrator exec --full-playbook` |
+| (no tag) | Complete `orchestrator.yml` without `--tags`: the single file `fvt/test_playbook.py`, directly under `fvt/` (every tag folder has its own `test_playbook.py`). Explicit only: `./run_validation.sh fvt_orchestrator exec --full-playbook` |
 | `cleanup` | `openchami`, `openldap`, `slurm`, `kubernetes`, `artifacts`, `credentials` | Explicit full-cleanup postconditions |
 
 An untagged FVT flow uses `precheck -> prepare -> provision -> pxeboot`.

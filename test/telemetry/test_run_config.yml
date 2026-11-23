@@ -120,10 +120,3 @@ fvt_telemetry:
     marker: "sanity"
     dataset: ""
     sync_input: false
-  full_playbook:
-    run: false
-    command: "exec"
-    suite: ""
-    marker: ""
-    dataset: ""
-    sync_input: false
