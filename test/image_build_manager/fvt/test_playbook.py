@@ -15,7 +15,7 @@
 image_build_manager Full Playbook - Deploy (no tags).
 
 Deploy image_build_manager.yml with no --tags: the complete playbook.
-Run it with: ./run_validation.sh fvt_image_build_manager exec --full-playbook
+Run it with: ./run_validation.sh fvt_image_build_manager exec (no tag)
 """
 
 import pytest

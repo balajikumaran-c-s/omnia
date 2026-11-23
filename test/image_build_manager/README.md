@@ -228,10 +228,12 @@ ARM-host readiness and tooling checks before artifact and package validation.
 | `validate` | `--tags validate` | Configuration, credentials, package/catalog input, effective `repo_ssl_verify`, and template wiring; does not consume `repo_status.yml` |
 | `prepare` | `--tags prepare` | MinIO, registry, systemd, S3 buckets |
 | `build` | `--tags build` | Build-only repo-status contract validation, S3 images, registry images, build_status, and **naming convention** |
-| (no tag) | Complete `image_build_manager.yml` without `--tags`: the single file `fvt/test_playbook.py`, directly under `fvt/` (every tag folder has its own `test_playbook.py`). Explicit only: `./run_validation.sh fvt_image_build_manager exec --full-playbook` |
+| (no tag) | no `--tags` | Complete playbook: `fvt/test_playbook.py`, run with `./run_validation.sh fvt_image_build_manager exec` |
 | `cleanup` | `--tags cleanup` | Remove local MinIO/registry data and services, build output/logs, MinIO s3cmd config, and domain credentials (kept with `cleanup_credentials: false` in `test_config.yml`); external PowerScale storage and s3cmd config are retained |
 | `cleanup_images` | `--tags cleanup_images` | Delete S3 + registry images |
-| *(none)* | *(no tag)* | Full end-to-end (prepare + build) |
+
+`./run_validation.sh fvt_image_build_manager exec` (no tag) runs the complete playbook once, from `fvt/test_playbook.py`.
+`./run_validation.sh fvt_image_build_manager <tag> exec` runs only that tag (`--tags <tag>`, from `fvt/<tag>/test_playbook.py`).
 
 #### Build-type naming convention (within `build` tag)
 

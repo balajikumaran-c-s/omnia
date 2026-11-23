@@ -19,7 +19,7 @@ Every domain has one ``fvt/test_playbook.py`` (directly under ``fvt/``, like the
 ``src/<domain>/<domain>.yml`` it runs without tags); its only test calls
 :func:`run_full_playbook_test` with the domain's own ``run_playbook`` wrapper, so the playbook
 name, working directory and defaults stay the domain's.  It runs with
-``./run_validation.sh fvt_<domain> exec --full-playbook``.
+``./run_validation.sh fvt_<domain> exec`` (no tag).
 """
 
 from typing import Any, Callable, Dict

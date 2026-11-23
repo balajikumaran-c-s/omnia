@@ -27,8 +27,11 @@ verifies what that step creates. The three actions:
 | `precheck` | Read-only `--tags precheck` | Default lifecycle |
 | `prepare` | Deploys BuildStream, Postgres and playbook-watcher | Default lifecycle |
 | `execute` | Deploys GitLab and runs real pipelines (detail below) | Default lifecycle |
-| (no tag) | Complete `build_stream.yml` without `--tags`: the single file `fvt/test_playbook.py`, directly under `fvt/` (every tag folder has its own `test_playbook.py`). Explicit only: `./run_validation.sh fvt_build_stream exec --full-playbook` |
+| (no tag) | Complete `build_stream.yml` without `--tags` (`fvt/test_playbook.py`) | `./run_validation.sh fvt_build_stream exec` |
 | `cleanup` | **Destructive**: removes GitLab and BuildStream. Postgres data and credentials follow `cleanup.postgres_backup` / `cleanup.cleanup_credentials` | Explicit only |
+
+`./run_validation.sh fvt_build_stream exec` (no tag) runs the complete playbook once, from `fvt/test_playbook.py`.
+`./run_validation.sh fvt_build_stream <tag> exec` runs only that tag (`--tags <tag>`, from `fvt/<tag>/test_playbook.py`).
 
 `execute` runs real pipelines: it builds and deploys images, runs a cadence
 cycle, an image cleanup pipeline and an automated cleanup pass. It changes live

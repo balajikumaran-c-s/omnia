@@ -788,7 +788,7 @@ def credentials(domain: str) -> int:
                 f"encrypt {name}")
 
 
-SAFE_EXTRA = re.compile(r"^(--marker [a-z_]{1,32}|--full-playbook)?$")
+SAFE_EXTRA = re.compile(r"^(--marker [a-z_]{1,32})?$")
 
 
 def _fvt(domain: str, tag: str, command: str, extra: str = "", missing: str = _NO_VENV) -> int:
@@ -797,7 +797,7 @@ def _fvt(domain: str, tag: str, command: str, extra: str = "", missing: str = _N
     _domain(domain)
     if tag:
         _tag(tag)
-    if not SAFE_EXTRA.match(extra) or (not tag and extra != "--full-playbook"):
+    if not SAFE_EXTRA.match(extra) or (not tag and (extra or command != "exec")):
         _fail(f"'{extra}' is not a --marker option of plain characters")
     path = install_path()
     return _run(f"""set -e
@@ -821,7 +821,7 @@ def deploy(domain: str) -> int:
     tags = [t.strip() for t in _env(f"{domain.upper()}_TAGS").split(",") if t.strip()]
     if not tags:
         _say(f"===== {domain}: the complete playbook (no tags) =====")
-        return _fvt(domain, "", "exec", "--full-playbook")
+        return _fvt(domain, "", "exec")
     for tag in tags:
         _say(f"===== {domain}: {tag} (exec) =====")
         rc = _fvt(domain, _tag(tag), "exec")

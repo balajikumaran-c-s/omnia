@@ -28,10 +28,9 @@ from typing import Tuple
 
 COMMANDS: Tuple[str, ...] = ("exec", "verify", "test")
 
-# Label of the exec that runs the complete domain playbook (no ``--tags``); selected by
-# ``./run_validation.sh fvt_<domain> exec --full-playbook``. It has no tag folder: its test is
-# the ``fvt/test_playbook.py`` file, directly under ``fvt/``.
-FULL_PLAYBOOK_TAG: str = "full_playbook"
+# Test file of the complete domain playbook (no ``--tags``), directly under ``fvt/``.
+# ``./run_validation.sh fvt_<domain> exec`` (no tag) runs it; a tag
+# (``fvt_<domain> <tag> exec``) runs that tag folder only.
 FULL_PLAYBOOK_FILE: str = "test_playbook.py"
 
 # Environment variable that sets the ansible verbosity (0-4) of every playbook run.

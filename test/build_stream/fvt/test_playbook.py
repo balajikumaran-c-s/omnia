@@ -16,7 +16,7 @@
 build_stream Full Playbook - Deploy (no tags).
 
 Deploy build_stream.yml with no --tags: the complete playbook.
-Run it with: ./run_validation.sh fvt_build_stream exec --full-playbook
+Run it with: ./run_validation.sh fvt_build_stream exec (no tag)
 """
 
 import pytest

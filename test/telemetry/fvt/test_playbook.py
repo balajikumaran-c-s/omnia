@@ -16,7 +16,7 @@
 telemetry Full Playbook - Deploy (no tags).
 
 Deploy telemetry.yml with no --tags: the complete playbook.
-Run it with: ./run_validation.sh fvt_telemetry exec --full-playbook
+Run it with: ./run_validation.sh fvt_telemetry exec (no tag)
 """
 
 import pytest

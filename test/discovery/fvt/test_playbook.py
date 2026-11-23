@@ -16,7 +16,7 @@
 discovery Full Playbook - Deploy (no tags).
 
 Deploy discovery.yml with no --tags: the complete playbook.
-Run it with: ./run_validation.sh fvt_discovery exec --full-playbook
+Run it with: ./run_validation.sh fvt_discovery exec (no tag)
 """
 
 import pytest

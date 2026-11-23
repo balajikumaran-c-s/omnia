@@ -74,12 +74,15 @@ REPO_MANAGER_TEST_CLEANUP_REPO=x86_64_rhel_10.0_test_repo \
 | `prepare` | Deploy Pulp server and verify container/services |
 | `execute` | Download and sync repositories |
 | `status` | Generate and verify repo_status.yml |
-| (no tag) | Complete `repo_manager.yml` without `--tags`: the single file `fvt/test_playbook.py`, directly under `fvt/` (every tag folder has its own `test_playbook.py`). Explicit only: `./run_validation.sh fvt_repo_manager exec --full-playbook` |
+| (no tag) | Complete `repo_manager.yml` without `--tags`: `fvt/test_playbook.py`, run with `./run_validation.sh fvt_repo_manager exec` |
 | `cleanup` | Cleanup Pulp server and verify removal; the credential store follows `cleanup_credentials` in `test_config.yml` (`false` keeps it) |
 | `cleanup_repos` | Explicitly selected exact repository cleanup and state invalidation |
 | `policy` | Test repository policy configurations |
 | `user_registry` | Test user registry configuration and validation |
 | `catalog` | Run one explicitly selected catalog operation suite |
+
+`./run_validation.sh fvt_repo_manager exec` (no tag) runs the complete playbook once, from `fvt/test_playbook.py`.
+`./run_validation.sh fvt_repo_manager <tag> exec` runs only that tag (`--tags <tag>`, from `fvt/<tag>/test_playbook.py`).
 
 The FVT commands have fixed meanings:
 

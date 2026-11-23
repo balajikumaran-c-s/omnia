@@ -34,7 +34,7 @@ import yaml
 
 from .formatting_func import Colors, _render_summary
 from ..vars.validation_vars import (
-    ANSIBLE_VERBOSITY_ENV, COMMANDS, FULL_PLAYBOOK_FILE, FULL_PLAYBOOK_TAG,
+    ANSIBLE_VERBOSITY_ENV, COMMANDS, FULL_PLAYBOOK_FILE,
 )
 
 # Regex for safe identifiers from config YAML (no shell metacharacters)
@@ -418,27 +418,7 @@ class ValidationRunner:
             return 1
 
         self._apply_ansible_verbosity(opts)
-        if opts.pop("full_playbook", ""):
-            if tag or command != "exec":
-                _err(
-                    "--full-playbook is used as: "
-                    f"{self.cat_fvt} exec --full-playbook (without a tag)"
-                )
-                return 2
-            if not os.path.isfile(
-                os.path.join(self.fvt_dir, FULL_PLAYBOOK_FILE),
-            ):
-                _err(
-                    f"{self.cat_fvt} has no fvt/{FULL_PLAYBOOK_FILE} "
-                    "(the complete playbook scenario)"
-                )
-                return 2
-            tag = FULL_PLAYBOOK_TAG
-        if tag == FULL_PLAYBOOK_TAG and command != "exec":
-            _err(f"'{FULL_PLAYBOOK_TAG}' supports exec only")
-            return 2
-
-        if tag and tag != FULL_PLAYBOOK_TAG and not os.path.isdir(
+        if tag and not os.path.isdir(
             os.path.join(self.fvt_dir, tag),
         ):
             _err(f"Tag '{tag}' not found in fvt/")
@@ -513,9 +493,6 @@ class ValidationRunner:
             _err(str(exc))
             return 2
         self._apply_ansible_verbosity(opts)
-        if opts.pop("full_playbook", ""):
-            _err("--full-playbook is supported only for an FVT run")
-            return 2
         if opts["suite"]:
             _err("--suite is supported only for a tagged FVT run")
             return 2
@@ -549,7 +526,7 @@ class ValidationRunner:
         """
         opts: Dict[str, str] = {
             "suite": "", "marker": "", "verbose": "",
-            "debug": "", "full_playbook": "", "ansible_verbosity": "",
+            "debug": "", "ansible_verbosity": "",
         }
         i = 0
         while i < len(args):
@@ -571,9 +548,6 @@ class ValidationRunner:
             elif args[i] == "--debug":
                 opts["debug"] = "true"
                 opts["verbose"] = "-vvs"
-                i += 1
-            elif args[i] == "--full-playbook":
-                opts["full_playbook"] = "true"
                 i += 1
             elif args[i] == "--ansible-verbosity":
                 if i + 1 >= len(args) or args[i + 1] not in (
@@ -632,7 +606,26 @@ class ValidationRunner:
     def _run_exec(
         self, tag: str, suite: str, marker: str, verbose: str,
     ) -> int:
-        """Run playbook execution only."""
+        """Run playbook execution only.
+
+        Without a tag, a domain that has ``fvt/test_playbook.py`` runs its complete playbook
+        (no ``--tags``); otherwise the configured lifecycle tags run in order.
+        """
+        full_playbook = os.path.join(self.fvt_dir, FULL_PLAYBOOK_FILE)
+        if not tag and not suite and os.path.isfile(full_playbook):
+            os.environ["OMNIA_COMMAND_TYPE"] = "exec"
+            marker_args = "-m deploy"
+            if marker:
+                marker_args += f" --marker {marker}"
+            _info("Executing the complete playbook (no --tags)...")
+            rc = self._invoke_pytest_with_summary(
+                full_playbook, marker_args, verbose,
+            )
+            if rc == 0:
+                _ok("Playbook execution completed.")
+            else:
+                _fail("Playbook execution failed.")
+            return rc
         if not tag and self._all_exec_tags:
             try:
                 selected_marker = self._canonical_marker(
@@ -667,13 +660,10 @@ class ValidationRunner:
             return 0
 
         os.environ["OMNIA_COMMAND_TYPE"] = "exec"
-        if tag == FULL_PLAYBOOK_TAG:
-            exec_path = os.path.join(self.fvt_dir, FULL_PLAYBOOK_FILE)
-        else:
-            exec_path = (
-                os.path.join(self.fvt_dir, tag) if tag
-                else os.path.join(self.fvt_dir, "build")
-            )
+        exec_path = (
+            os.path.join(self.fvt_dir, tag) if tag
+            else os.path.join(self.fvt_dir, "build")
+        )
         if tag and suite:
             tag_dir = Path(self.fvt_dir, tag)
             suite_path = str(Path(tag_dir, suite).resolve(strict=True))
@@ -1614,8 +1604,6 @@ class ValidationRunner:
         print("  -v, --verbose     Increase verbosity")
         print("  --debug           Full debug (-vvs)")
         print("  --ansible-verbosity <0-4>  Ansible verbosity of every playbook")
-        print(f"  --full-playbook   exec: run the complete playbook "
-              f"(fvt/{FULL_PLAYBOOK_FILE}, no --tags)")
         print()
         self._print_suite_exec_owner_help()
         f = self.cat_fvt

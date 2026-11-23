@@ -16,7 +16,7 @@
 repo_manager Full Playbook - Deploy (no tags).
 
 Deploy repo_manager.yml with no --tags: the complete playbook.
-Run it with: ./run_validation.sh fvt_repo_manager exec --full-playbook
+Run it with: ./run_validation.sh fvt_repo_manager exec (no tag)
 """
 
 import pytest

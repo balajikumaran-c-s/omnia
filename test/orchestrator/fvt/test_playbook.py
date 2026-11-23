@@ -16,7 +16,7 @@
 orchestrator Full Playbook - Deploy (no tags).
 
 Deploy orchestrator.yml with no --tags: the complete playbook.
-Run it with: ./run_validation.sh fvt_orchestrator exec --full-playbook
+Run it with: ./run_validation.sh fvt_orchestrator exec (no tag)
 """
 
 import pytest

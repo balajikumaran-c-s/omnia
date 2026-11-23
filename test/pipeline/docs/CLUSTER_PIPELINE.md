@@ -151,10 +151,10 @@ stops at the first failure:
 **With tags or without.** `deploy_tags.<domain>` in the config (variable `<DOMAIN>_TAGS`, a comma
 list such as `prepare,execute`) runs exactly those tags, one `./run_validation.sh fvt_<domain>
 <tag> exec` each; every tag is `ansible-playbook <domain>.yml --tags <tag>`. With no tags the
-**complete playbook** runs once without `--tags`: `./run_validation.sh fvt_<domain> exec
---full-playbook` (the single file `fvt/test_playbook.py`, directly under `fvt/`, which every domain with a playbook has: repo_manager,
-image_build_manager, discovery, orchestrator, telemetry, build_stream; it is explicit only and not
-part of any default run; utils has none because `utils.yml` is meant to run one tag at a time).
+**complete playbook** runs once without `--tags`: `./run_validation.sh fvt_<domain> exec` (no tag;
+it runs `fvt/test_playbook.py`, which every domain with a playbook has: repo_manager,
+image_build_manager, discovery, orchestrator, telemetry, build_stream; utils has none because
+`utils.yml` is meant to run one tag at a time). A tag runs as `./run_validation.sh fvt_<domain> <tag> exec`.
 
 **Verbose.** `VERBOSE=true` adds `-v --ansible-verbosity 3` to every FVT call (pytest `-v` and
 `ansible-playbook -vvv`). `--ansible-verbosity <0-4>` is a runner option of every domain and sets

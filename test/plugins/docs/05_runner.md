@@ -182,12 +182,13 @@ result = run_playbook(
   argument, the environment variable `OMNIA_ANSIBLE_VERBOSITY` (0 to 4), the setting
   `default_verbosity` (1). `./run_validation.sh fvt_<domain> ... --ansible-verbosity <0-4>` sets
   the variable for that run.
-- **Full playbook.** `./run_validation.sh fvt_<domain> exec --full-playbook` runs
-  `fvt/test_playbook.py`, the one test file directly under `fvt/` (a tag folder holds its own
-  `test_playbook.py`; the no-tag run has no folder): the complete domain playbook once, without
-  `--tags`. The test calls
+- **Full playbook.** `./run_validation.sh fvt_<domain> exec` (no tag) runs `fvt/test_playbook.py`, the
+  one test file directly under `fvt/`: the complete domain playbook once, without `--tags`.
+  `./run_validation.sh fvt_<domain> <tag> exec` runs only that tag, from `fvt/<tag>/test_playbook.py`
+  (`--tags <tag>`). The full-playbook test calls
   `omnia_auto.run_full_playbook_test(run_playbook, "<playbook>.yml", title, tc_id)` with the
-  domain's own `run_playbook` wrapper. It is explicit only and supports `exec` only.
+  domain's own `run_playbook` wrapper. A domain without `fvt/test_playbook.py` (utils) keeps running
+  its default lifecycle tags for an untagged `exec`.
 - **Playbook output in the report.** `run_playbook` keeps its output for the running test
   (`set_last_playbook_output`); `get_test_output()` returns the test screen output followed by
   `PLAYBOOK_OUTPUT_MARKER` and the playbook output (head and tail of a very long one). The HTML
