@@ -151,6 +151,13 @@ class Layout:
         return "inputs/src and inputs/test" if self.new else "inputs/<domain> (older layout)"
 
 
+ACTIVATE = """DATA=$(grep '^OMNIA_DATA_PATH=' {install}/src/main/omnia.env 2>/dev/null | cut -d= -f2)
+DATA="${{DATA:-/opt/omnia}}"; DATA="${{DATA%/}}"
+if [ ! -f "$DATA/activate-omnia.sh" ]; then {missing}; fi
+source "$DATA/activate-omnia.sh"
+"""
+
+
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
