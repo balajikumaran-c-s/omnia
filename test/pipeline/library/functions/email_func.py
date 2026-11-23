@@ -80,15 +80,19 @@ def verdict_of(jobs: Sequence[Job]) -> str:
 
 
 def not_run(order: Sequence[str], jobs: Sequence[Job]) -> List[str]:
-    """Jobs of the order after the first failed one that left no status (they never ran)."""
-    seen = {name for name, _, _ in jobs}
-    failed = [i for i, name in enumerate(order) if name in {n for n, s, _ in jobs if s == "failed"}]
-    return [name for name in order[failed[0] + 1:] if name not in seen] if failed else []
+    """Jobs that did not run: GitLab skipped them, or (no status at all) they follow the first
+    failed job of the order."""
+    seen = {name: status for name, status, _ in jobs}
+    failed = [i for i, name in enumerate(order) if seen.get(name) == "failed"]
+    after = order[failed[0] + 1:] if failed else []
+    return [name for name in order if seen.get(name) == "skipped"
+            or (name in after and name not in seen)]
 
 
 def build_message(*, sender: str, recipients: Sequence[str], info: Dict[str, str],
                   jobs: Sequence[Job], order: Sequence[str],
-                  attachments: Sequence[Tuple[str, bytes]] = ()) -> MIMEMultipart:
+                  attachments: Sequence[Tuple[str, bytes]] = (),
+                  reasons: Optional[Dict[str, str]] = None) -> MIMEMultipart:
     """Build the summary email.
 
     Args:
@@ -96,7 +100,9 @@ def build_message(*, sender: str, recipients: Sequence[str], info: Dict[str, str
         jobs: (job name, status, job url) of every job that left a status.
         order: the job names in pipeline order (rows of the table).
         attachments: (file name, content) of the test reports.
+        reasons: {job: why it failed}, shown under the failed job.
     """
+    reasons = reasons or {}
     esc = html.escape
     verdict = verdict_of(jobs)
     color = VERDICT_COLORS[verdict]
@@ -120,12 +126,14 @@ def build_message(*, sender: str, recipients: Sequence[str], info: Dict[str, str
                         f"<td style='{CELL}'>{value}</td></tr>" for name, value in rows)
     why = ""
     if failed:
-        items = "".join(f"<li style='margin-bottom:4px'>{anchor(url, name)}</li>"
-                        for name, url in failed)
+        items = "".join(
+            f"<li style='margin-bottom:6px'>{anchor(url, name)}"
+            + (f"<br><span style='color:#842029'>{esc(reasons[name])}</span>"
+               if reasons.get(name) else "") + "</li>" for name, url in failed)
         why = ("<div style='border-left:4px solid #dc3545;background:#fdf1f2;padding:10px 14px;"
                f"margin:16px 0'><b>Failed:</b><ul style='margin:6px 0 0 18px;padding:0'>{items}"
-               "</ul>" + (f"<b>Did not run:</b> {esc(', '.join(skipped))}" if skipped else "")
-               + "</div>")
+               "</ul>" + (f"<b>Did not run:</b> {len(skipped)} job(s), listed in the table below"
+                          if skipped else "") + "</div>")
     table = "".join(
         f"<tr><td style='{CELL}'>{anchor(by_name[name][1], name)}</td>"
         f"<td style='{CELL}'>{status_cell(by_name[name][0])}</td></tr>"
@@ -157,8 +165,10 @@ def build_message(*, sender: str, recipients: Sequence[str], info: Dict[str, str
         f"Commit:     {commit[:12] or 'not checked out'}  {commit_url}".rstrip(),
         f"Pipeline:   {pipeline_url}", "",
         *([("Failed: " + ", ".join(n for n, _ in failed))] if failed else []),
-        *([f"Did not run: {', '.join(skipped)}"] if skipped else []), "", "Pipeline jobs:",
-        *(f"  {name:<28} {by_name[name][0]}" for name in order if name in by_name)])
+        *[f"  {n}: {reasons[n]}" for n, _ in failed if reasons.get(n)],
+        *([f"Did not run: {len(skipped)} job(s)"] if skipped else []), "", "Pipeline jobs:",
+        *(f"  {name:<28} {'not run' if by_name[name][0] == 'skipped' else by_name[name][0]}"
+          for name in order if name in by_name)])
     message = MIMEMultipart("mixed")
     message["From"], message["To"] = sender, ", ".join(recipients)
     names = f" ({', '.join(n for n, _ in failed)})" if failed else ""

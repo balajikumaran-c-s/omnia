@@ -97,6 +97,12 @@ BOOTSTRAP = r"""
 import os, re, shlex, subprocess, sys, time
 def fail(message):
     print("ERROR: " + message, file=sys.stderr)
+    try:
+        os.makedirs("pipeline_job_status/errors", exist_ok=True)
+        with open("pipeline_job_status/errors/initialization.txt", "w", encoding="utf-8") as handle:
+            handle.write(message[:600])
+    except OSError:
+        pass
     sys.exit(1)
 cluster = os.environ.get("CLUSTER", "")
 if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", cluster):
@@ -136,13 +142,21 @@ clone = ("set -e\n"
          "mkdir -p " + q(os.path.dirname(path)) + "\n"
          "git clone -b " + q(branch) + " " + q(repo) + " " + q(path) + "\n")
 for attempt in range(1, 6):
-    rc = subprocess.run(ssh + ["bash", "-s"], input=clone.encode(), env=env).returncode
+    done = subprocess.run(ssh + ["bash", "-s"], input=clone.encode(), env=env, capture_output=True,
+                          check=False)
+    rc = done.returncode
+    out = (done.stdout + done.stderr).decode(errors="replace").replace(password, "********")
+    sys.stdout.write(out)
     if rc != 255:
         break
     print("SSH connection failed, retry " + str(attempt) + "/5 in 10s")
     time.sleep(10)
 if rc:
-    fail("cloning " + repo + " (" + branch + ") on the OIM failed (exit code " + str(rc) + ")")
+    hint = {5: " - the OIM rejected the password, check the CI/CD variable " + prefix + "_TARGET_PASS",
+            255: " - the OIM did not answer on SSH"}.get(rc, "")
+    last = ([x for x in out.splitlines() if x.strip()] or [""])[-1][:200]
+    fail("cloning " + repo + " (" + branch + ") on the OIM failed (exit code " + str(rc) + ")"
+         + hint + (": " + last if last else ""))
 os.makedirs("ci_tools", exist_ok=True)
 pack = subprocess.Popen(ssh + ["tar -C " + q(path) + "/test/pipeline --exclude=__pycache__ -cf - "
                                "pipeline_ci.py library"], stdout=subprocess.PIPE, env=env)
@@ -187,11 +201,19 @@ for name in sorted(glob.glob("pipeline_job_status/**/*.json", recursive=True)):
     except (OSError, ValueError, KeyError, TypeError):
         continue
 failed = [r for r in rows if r[1] == "failed"]
+reasons = {}
+for name in glob.glob("pipeline_job_status/errors/*.txt"):
+    try:
+        with open(name, encoding="utf-8") as handle:
+            reasons[os.path.basename(name)[:-4]] = handle.read().strip()
+    except OSError:
+        pass
 cluster, mode = os.environ.get("CLUSTER", ""), os.environ.get("PIPELINE_MODE", "")
 lines = ["Pipeline summary, cluster " + cluster + ", mode " + mode, ""]
 lines += ["  %-30s %s" % (n, st) for n, st, _ in rows]
 lines += ["", "Failed: " + (", ".join(n for n, _, _ in failed) or "none")]
 lines += ["  " + n + ": " + u for n, _, u in failed if u]
+lines += ["  reason " + n + ": " + r for n, r in reasons.items()]
 lines += ["", "Pipeline: " + os.environ.get("CI_PIPELINE_URL", ""), "",
           "The full report could not be produced: the pipeline helpers were not available "
           "(initialization failed before the Omnia clone). Open the failed job for the reason."]

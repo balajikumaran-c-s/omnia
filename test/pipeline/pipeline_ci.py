@@ -63,7 +63,8 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from typing import Dict, List, Optional, Tuple
+from collections import deque
+from typing import Deque, Dict, List, Optional, Tuple
 
 DOMAINS = ("repo_manager", "image_build_manager", "discovery", "orchestrator", "telemetry",
            "utils", "build_stream")
@@ -77,6 +78,8 @@ PROTECTED_PATHS = ("/", "/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib6
                    "/sys", "/tmp",  # nosec B108
                    "/usr", "/var")  # deny list entries, never used as a path
 STATUS_DIR = "pipeline_job_status"
+ERROR_DIR = f"{STATUS_DIR}/errors"
+MAX_REASON = 600
 TOLERATED_JOBS = ("cleanup_utils", "cleanup_discovery")
 COMMIT_FILE = "actual_commit_sha.txt"
 REPORT_DIR = "pipeline_reports"
@@ -118,8 +121,22 @@ def _say(message: str) -> None:
     print(message, flush=True)
 
 
+def _record_error(message: str) -> None:
+    """Keep why this job failed (an artifact), so the summary mail can show it."""
+    job = _env("CI_JOB_NAME")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", job):
+        return
+    try:
+        os.makedirs(ERROR_DIR, exist_ok=True)
+        with open(f"{ERROR_DIR}/{job}.txt", "w", encoding="utf-8") as handle:
+            handle.write(_redact(message)[:MAX_REASON])
+    except OSError:
+        pass
+
+
 def _fail(message: str) -> None:
     print(f"ERROR: {message}", file=sys.stderr, flush=True)
+    _record_error(message)
     raise SystemExit(1)
 
 
@@ -186,6 +203,9 @@ def _redact(text: str) -> str:
     return text.replace(secret, "********") if len(secret) >= 4 else text
 
 
+LAST_OUTPUT: Deque[str] = deque(maxlen=6)
+
+
 def remote(script: str, stdin: Optional[bytes] = None, capture: bool = False,
            retry: bool = False) -> Tuple[int, str]:
     """Run a bash script on the OIM (script on stdin of `bash -s`); stream or capture output."""
@@ -202,6 +222,8 @@ def remote(script: str, stdin: Optional[bytes] = None, capture: bool = False,
         lines: List[str] = []
         for raw in proc.stdout:
             line = _redact(raw.decode(errors="replace"))
+            if line.strip():
+                LAST_OUTPUT.append(line.strip())
             if capture:
                 lines.append(line)
             else:
@@ -228,9 +250,11 @@ def _dry_run(what: str, script: str = "") -> bool:
 def _run(script: str, what: str) -> int:
     if _dry_run(what, script):
         return 0
+    LAST_OUTPUT.clear()
     rc, _ = remote(script)
     if rc != 0:
         _say(f"ERROR: {what} failed (exit code {rc})")
+        _record_error(f"{what} failed (exit code {rc}): " + " | ".join(list(LAST_OUTPUT)[-3:]))
     return rc
 
 
@@ -709,6 +733,40 @@ def _statuses() -> List[Tuple[str, str, str]]:
     return list(found.values())
 
 
+def _api_jobs() -> List[Tuple[str, str, str]]:
+    """Return (job, status, page) of every job of this pipeline from the GitLab API.
+
+    It lists the jobs GitLab skipped too (they leave no status file). Best effort: [] when the
+    API is not reachable or the job token is refused.
+    """
+    api, token = _env("CI_API_V4_URL"), os.environ.get("CI_JOB_TOKEN", "")
+    if not (api and token and _env("CI_PROJECT_ID") and _env("CI_PIPELINE_ID")):
+        return []
+    url = (f"{api}/projects/{_env('CI_PROJECT_ID')}/pipelines/{_env('CI_PIPELINE_ID')}/jobs"
+           "?per_page=100")
+    try:
+        context = ssl.create_default_context(cafile=_env("CI_SERVER_TLS_CA_FILE") or None)
+        request = urllib.request.Request(url, headers={"JOB-TOKEN": token})  # nosec B310  # https API
+        with urllib.request.urlopen(request, context=context, timeout=20) as response:  # nosec B310
+            items = json.load(response)
+        return [(str(j["name"]), str(j["status"]), str(j.get("web_url", ""))) for j in items
+                if j.get("name") != "summary"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+
+
+def _reasons() -> Dict[str, str]:
+    """Return {job: why it failed} from the files the failed jobs left."""
+    found: Dict[str, str] = {}
+    for name in glob.glob(f"{ERROR_DIR}/*.txt"):
+        try:
+            with open(name, encoding="utf-8") as handle:
+                found[os.path.basename(name)[:-4]] = handle.read().strip()
+        except OSError:
+            continue
+    return found
+
+
 def _fetch_reports() -> List[Tuple[str, bytes]]:
     """Copy the test reports written during this pipeline from the OIM to pipeline_reports/."""
     path = _env("TEST_REPORTS_PATH", "/opt/omnia/reports")
@@ -752,7 +810,7 @@ def _send_summary_email(jobs: List[Tuple[str, str, str]], reports: List[Tuple[st
             "trigger_time": _env("CI_PIPELINE_CREATED_AT")}
     order = [x for x in _env("PIPELINE_JOB_ORDER").split(",") if x]
     message = email_func.build_message(sender=sender, recipients=recipients, info=info, jobs=jobs,
-                                       order=order, attachments=reports)
+                                       order=order, attachments=reports, reasons=_reasons())
     try:
         email_func.send_message(message, server, int(_env("SMTP_PORT", "25") or 25),
                                 _env("SMTP_USER"), os.environ.get("SMTP_PASSWORD"))
@@ -767,7 +825,10 @@ def _send_summary_email(jobs: List[Tuple[str, str, str]], reports: List[Tuple[st
 def summary() -> int:
     """Print the status of every job, send the summary email, fail when a job failed."""
     apply_cluster()
-    jobs = _statuses()
+    local = {name: (name, status, url) for name, status, url in _statuses()}
+    api = {name: (name, status, url or local.get(name, ("", "", ""))[2])
+           for name, status, url in _api_jobs()}
+    jobs = list(({**local, **api}).values())
     width = max([len(n) for n, _, _ in jobs] + [4])
     _say(f"Pipeline summary, cluster {_env('CLUSTER')}")
     for name, status, _ in jobs:

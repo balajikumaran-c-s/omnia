@@ -26,7 +26,7 @@ STATUS_STYLES = {
     "success": ("PASSED", "#198754"),
     "failed": ("FAILED", "#dc3545"),
     "canceled": ("CANCELED", "#6c757d"),
-    "skipped": ("SKIPPED", "#6c757d"),
+    "skipped": ("NOT RUN", "#6c757d"),
     "running": ("RUNNING", "#0d6efd"),
 }
 UNKNOWN_STYLE = ("NOT RUN", "#6c757d")
