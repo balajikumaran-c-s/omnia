@@ -571,7 +571,8 @@ cd {shlex.quote(path)}/test/main
 grep -q '^cleanup_all:' test_config.yml && sed -i -E 's/^cleanup_all:.*/cleanup_all: true/' test_config.yml || echo 'cleanup_all: true' >> test_config.yml
 chmod +x setup_env.sh run_validation.sh
 ./setup_env.sh --venv
-env -u VIRTUAL_ENV ./run_validation.sh fvt_main cleanup test {_verbosity()}
+source .venv/bin/activate
+./run_validation.sh fvt_main cleanup test {_verbosity()}
 """, "fvt_main cleanup test (omnia.sh --cleanup --all)")
 
 
