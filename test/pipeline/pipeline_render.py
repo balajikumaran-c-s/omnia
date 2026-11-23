@@ -154,6 +154,71 @@ if not os.path.isfile("ci_tools/pipeline_ci.py"):
          " must be a branch that has the pipeline helpers")
 print("Cloned " + repo + " (" + branch + ") to " + path + " and took the pipeline helpers from it")
 """
+SUMMARY_FALLBACK = r"""
+import glob, json, os, re, shutil, smtplib, ssl, subprocess, sys, tempfile
+from email.message import EmailMessage
+if os.path.isfile("ci_tools/pipeline_ci.py"):
+    sys.exit(0)
+print("ci_tools is missing: initialization failed before the clone, trying the runner")
+repo, branch = os.environ.get("OMNIA_REPO", ""), os.environ.get("OMNIA_BRANCH", "")
+if (re.fullmatch(r"(https?://|git@)[A-Za-z0-9._:/@~+-]+", repo)
+        and re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", branch) and shutil.which("git")):
+    work = tempfile.mkdtemp()
+    try:
+        done = subprocess.run(["git", "clone", "--depth", "1", "-q", "-b", branch, repo, work + "/o"],
+                              capture_output=True, timeout=120,
+                              env=dict(os.environ, GIT_TERMINAL_PROMPT="0"), check=False)
+    except subprocess.TimeoutExpired:
+        done = None
+    src = work + "/o/test/pipeline"
+    if done is not None and done.returncode == 0 and os.path.isfile(src + "/pipeline_ci.py"):
+        os.makedirs("ci_tools", exist_ok=True)
+        shutil.copy(src + "/pipeline_ci.py", "ci_tools/")
+        shutil.copytree(src + "/library", "ci_tools/library", dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        print("helpers fetched on the runner from " + repo + " (" + branch + ")")
+        sys.exit(0)
+rows = []
+for name in sorted(glob.glob("pipeline_job_status/**/*.json", recursive=True)):
+    try:
+        with open(name, encoding="utf-8") as handle:
+            item = json.load(handle)
+        rows.append((str(item["name"]), str(item["status"]), str(item.get("url", ""))))
+    except (OSError, ValueError, KeyError, TypeError):
+        continue
+failed = [r for r in rows if r[1] == "failed"]
+cluster, mode = os.environ.get("CLUSTER", ""), os.environ.get("PIPELINE_MODE", "")
+lines = ["Pipeline summary, cluster " + cluster + ", mode " + mode, ""]
+lines += ["  %-30s %s" % (n, st) for n, st, _ in rows]
+lines += ["", "Failed: " + (", ".join(n for n, _, _ in failed) or "none")]
+lines += ["  " + n + ": " + u for n, _, u in failed if u]
+lines += ["", "Pipeline: " + os.environ.get("CI_PIPELINE_URL", ""), "",
+          "The full report could not be produced: the pipeline helpers were not available "
+          "(initialization failed before the Omnia clone). Open the failed job for the reason."]
+print("\n".join(lines))
+recipients = [r.strip() for r in os.environ.get("EMAIL_RECIPIENTS", "").split(",") if r.strip()]
+server, sender = os.environ.get("SMTP_SERVER", ""), os.environ.get("EMAIL_SENDER", "")
+if recipients and server and sender:
+    message = EmailMessage()
+    message["From"], message["To"] = sender, ", ".join(recipients)
+    message["Subject"] = ("Omnia Pipeline [" + cluster + "] " + mode + " - FAILED ("
+                          + ", ".join(n for n, _, _ in failed) + ")")
+    message.set_content("\n".join(lines))
+    port = int(os.environ.get("SMTP_PORT", "25") or 25)
+    try:
+        with (smtplib.SMTP_SSL if port == 465 else smtplib.SMTP)(server, port, timeout=60) as smtp:
+            if port == 587:
+                smtp.starttls(context=ssl.create_default_context())
+            if os.environ.get("SMTP_USER") and os.environ.get("SMTP_PASSWORD"):
+                smtp.login(os.environ["SMTP_USER"], os.environ["SMTP_PASSWORD"])
+            smtp.send_message(message)
+        print("email sent to " + ", ".join(recipients))
+    except (OSError, smtplib.SMTPException) as exc:
+        print("ERROR: the summary email was NOT sent: " + type(exc).__name__ + ": " + str(exc))
+else:
+    print("email not configured (EMAIL_RECIPIENTS, EMAIL_SENDER, SMTP_SERVER): not sent")
+sys.exit(1)
+"""
 BEFORE_SCRIPT = ('git fetch origin "$CI_COMMIT_REF_NAME" 2>/dev/null && '
                  'git checkout "origin/$CI_COMMIT_REF_NAME" -- clusters/ 2>/dev/null || true')
 AFTER_SCRIPT = ('mkdir -p "pipeline_job_status/$CI_PIPELINE_ID"',
@@ -276,6 +341,7 @@ def render() -> str:
                           f"{_domain_condition(domain)}"], allow_failure=True,
                          skip=domain, id_tokens=True))
     summary = _job("summary", "summary", ["summary"], [ANY_MODE], when="always",
+                   python_blocks=[SUMMARY_FALLBACK],
                    optional=[name for name in stages if name != "summary"],
                    allow_failure=False, artifacts=["pipeline_reports/", "pipeline_job_status/"],
                    variables={"PIPELINE_JOB_ORDER": ",".join(s for s in stages if s != "summary")})
