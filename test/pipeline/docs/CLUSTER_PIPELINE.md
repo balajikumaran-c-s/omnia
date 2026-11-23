@@ -48,6 +48,7 @@ Any stage can be skipped with `SKIP_STAGES` (see [CONFIGURATION.md](CONFIGURATIO
 `setup_main`.
 
 **What stops what:**
+- A failed `initialization` skips every other stage: only `summary` runs.
 - A failed domain exec stops the pipeline: its verify stage and the later domains are skipped.
 - A failed verify (`test_<domain>`) does not stop the next domain.
 - A failed cleanup does not stop the other cleanups, but nothing is installed after it (below).
@@ -59,18 +60,17 @@ Any stage can be skipped with `SKIP_STAGES` (see [CONFIGURATION.md](CONFIGURATIO
 The rule: every cleanup runs, then `cleanup_omnia` runs, and if any of them failed nothing is
 installed or deployed.
 
-- The cleanup jobs and `cleanup_omnia` use `when: always` and wait for the previous cleanup
-  (`needs`, optional), so each runs in order even after another one failed.
-- Every later job keeps GitLab's default `when: on_success` and has no `needs`, so GitLab skips
-  it when any job of an earlier stage failed. The pipeline ends red and the OIM is not
-  reinstalled.
-- `always` would also run the cleanups after a failed initialization. So the initialization
-  job leaves a marker file (`pipeline_job_status/initialization.ok`, an artifact) only when every
-  step passed (the clone, the checks, the NFS check), and every cleanup job first checks the marker
-  and fails at once if it is missing. An unreachable NFS share therefore stops the cleanups before
-  anything is deleted.
-- `cleanup_utils` and `cleanup_discovery` are tolerated (`allow_failure: true`): the old discovery
-  cleanup ignored failures. A failure of these two does not stop the install.
+- The cleanup jobs and `cleanup_omnia` are `allow_failure` and each needs `initialization` plus the
+  earlier cleanups (`needs`, optional), so each runs in order even after another one failed, and a
+  failed `initialization` skips all of them.
+- The first job that would change anything after the cleanups, `setup_main` (and every domain
+  exec after it), first calls `require_cleanups_ok`: it fails, with a red pipeline, when a cleanup
+  failed. That skips every later stage. `cleanup_utils` and `cleanup_discovery` are tolerated: their
+  failure alone does not stop the install.
+- `summary` always runs and fails the pipeline when `initialization`, a cleanup, `setup_main` or a
+  domain exec failed (a failed verify does not).
+- The cleanup jobs also check the `pipeline_job_status/initialization.ok` marker, which the
+  initialization job leaves only when every step passed (the clone, the checks, the NFS check).
 - Each cleanup stage runs `fvt_<domain> cleanup test`: the exec step, then its verify step. If the
   exec step fails the verify step does not run.
 

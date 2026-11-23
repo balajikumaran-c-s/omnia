@@ -29,9 +29,10 @@
 #   setup_main: omnia.sh -s, then the inputs of every domain (one stage)
 #   test_main_installation -> <domain> (exec of every tag) -> test_<domain> (verify) ... -> summary
 #
-# A failed cleanup does not stop the other cleanups; nothing is installed after it. A failed
-# domain exec stops the pipeline (its verify and the later domains are skipped); a failed verify
-# does not stop the next domain.
+# A failed initialization skips every other stage; only summary runs. A failed cleanup does not
+# stop the other cleanups, but nothing is installed after it. A failed domain exec stops the
+# pipeline (its verify and the later domains are skipped); a failed verify does not stop the next
+# domain.
 #
 # Variables: DOMAINS (default, or a regex such as repo_manager|orchestrator), SKIP_STAGES,
 # ENABLE_SETUP, ENABLE_DISCOVERY, TEST_MODE, DRY_RUN, VERBOSE, <DOMAIN>_TAGS (comma list of FVT
@@ -181,7 +182,7 @@ initialization:
 cleanup_build_stream:
   stage: cleanup_build_stream
   timeout: 3h
-  allow_failure: false
+  allow_failure: true
   needs:
     - job: initialization
       artifacts: true
@@ -190,7 +191,7 @@ cleanup_build_stream:
       when: never
     - if: '($PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "default") && ($DOMAINS == "default" || $DOMAINS
         =~ /build_stream/)'
-      when: always
+      when: on_success
   script:
     - python3 ci_tools/pipeline_ci.py cleanup build_stream
 
@@ -209,14 +210,14 @@ cleanup_utils:
       when: never
     - if: '($PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "default") && ($DOMAINS == "default" || $DOMAINS
         =~ /utils/)'
-      when: always
+      when: on_success
   script:
     - python3 ci_tools/pipeline_ci.py cleanup utils
 
 cleanup_telemetry:
   stage: cleanup_telemetry
   timeout: 3h
-  allow_failure: false
+  allow_failure: true
   needs:
     - job: initialization
       artifacts: true
@@ -231,14 +232,14 @@ cleanup_telemetry:
       when: never
     - if: '($PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "default") && ($DOMAINS == "default" || $DOMAINS
         =~ /telemetry/)'
-      when: always
+      when: on_success
   script:
     - python3 ci_tools/pipeline_ci.py cleanup telemetry
 
 cleanup_orchestrator:
   stage: cleanup_orchestrator
   timeout: 3h
-  allow_failure: false
+  allow_failure: true
   needs:
     - job: initialization
       artifacts: true
@@ -256,7 +257,7 @@ cleanup_orchestrator:
       when: never
     - if: '($PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "default") && ($DOMAINS == "default" || $DOMAINS
         =~ /orchestrator/)'
-      when: always
+      when: on_success
   script:
     - python3 ci_tools/pipeline_ci.py cleanup orchestrator
 
@@ -284,14 +285,14 @@ cleanup_discovery:
       when: never
     - if: '($PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "default") && ($DOMAINS == "default" || $DOMAINS
         =~ /discovery/)'
-      when: always
+      when: on_success
   script:
     - python3 ci_tools/pipeline_ci.py cleanup discovery
 
 cleanup_image_build_manager:
   stage: cleanup_image_build_manager
   timeout: 3h
-  allow_failure: false
+  allow_failure: true
   needs:
     - job: initialization
       artifacts: true
@@ -315,14 +316,14 @@ cleanup_image_build_manager:
       when: never
     - if: '($PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "default") && ($DOMAINS == "default" || $DOMAINS
         =~ /image_build_manager/)'
-      when: always
+      when: on_success
   script:
     - python3 ci_tools/pipeline_ci.py cleanup image_build_manager
 
 cleanup_repo_manager:
   stage: cleanup_repo_manager
   timeout: 3h
-  allow_failure: false
+  allow_failure: true
   needs:
     - job: initialization
       artifacts: true
@@ -349,14 +350,14 @@ cleanup_repo_manager:
       when: never
     - if: '($PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "default") && ($DOMAINS == "default" || $DOMAINS
         =~ /repo_manager/)'
-      when: always
+      when: on_success
   script:
     - python3 ci_tools/pipeline_ci.py cleanup repo_manager
 
 cleanup_omnia:
   stage: cleanup_omnia
   timeout: 3h
-  allow_failure: false
+  allow_failure: true
   needs:
     - job: initialization
       artifacts: true
@@ -385,7 +386,7 @@ cleanup_omnia:
     - if: '$SKIP_STAGES =~ /cleanup_omnia/'
       when: never
     - if: '($PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "default") && $DOMAINS == "default"'
-      when: always
+      when: on_success
   script:
     - python3 ci_tools/pipeline_ci.py cleanup-omnia
 
@@ -571,7 +572,7 @@ test_telemetry:
 summary:
   stage: summary
   timeout: 3h
-  allow_failure: true
+  allow_failure: false
   variables:
     PIPELINE_JOB_ORDER: "initialization,cleanup_build_stream,cleanup_utils,cleanup_telemetry,cleanup_orchestrator,cleanup_disco\
       very,cleanup_image_build_manager,cleanup_repo_manager,cleanup_omnia,setup_main,test_main_installation,\

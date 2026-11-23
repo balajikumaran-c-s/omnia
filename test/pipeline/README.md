@@ -32,7 +32,7 @@ For every cluster, in this order:
    its verify step). Every cleanup runs, even after one failed. Then the `cleanup_omnia` stage
    empties the Slurm and Kubernetes NFS shares (the `test/utils` scenario `cleanup_nfs_shares`) and
    runs `omnia.sh --cleanup --all`. If any cleanup failed, nothing is installed and the pipeline
-   ends red.
+   ends red. If initialization fails, every other stage is skipped and only the summary runs.
 3. **Install** (`setup_main`, one stage): `omnia.sh -s` creates the Omnia venv and runs every
    `domain-init`, then the inputs of every domain (`clusters/<cluster>/inputs/<domain>/`) and the
    catalog are copied to `<data>/<domain>/input/<project>/` on the OIM. `fvt_main verify` tests the

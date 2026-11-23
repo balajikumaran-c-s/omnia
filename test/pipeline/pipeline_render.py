@@ -22,10 +22,15 @@ The jobs are one-line calls of ci_tools/pipeline_ci.py, which the initialization
 the Omnia clone on the OIM (nothing but the YAML is uploaded to the GitLab project).  The modes (PIPELINE_MODE), DOMAINS, SKIP_STAGES,
 ENABLE_SETUP, ENABLE_DISCOVERY, TEST_MODE, DRY_RUN and VERBOSE keep their meaning.
 
-How a failed cleanup stops the install: the cleanup jobs run in order and ``when: always``, so
-every cleanup runs even after one failed, and so does ``cleanup_omnia``.  Every later job keeps
-GitLab's default ``when: on_success`` and has no ``needs``, so GitLab skips it when any job of
-an earlier stage failed.  The pipeline then ends red with nothing installed.
+Failure rules:
+* initialization fails -> every other stage is skipped (the cleanup jobs need it and run on
+  success, the later jobs wait for the earlier stages) and only ``summary`` runs.
+* A cleanup fails -> the cleanup jobs are ``allow_failure`` and each needs only initialization
+  and the earlier cleanups, so every cleanup and ``cleanup_omnia`` still run.  ``setup_main`` and
+  every domain exec then call ``require_cleanups_ok`` and fail, which skips the rest, and
+  ``summary`` fails the pipeline.  Nothing is installed.
+* A domain exec fails -> the pipeline stops (its verify and the later domains are skipped).
+  A verify fails -> the next domain still runs.
 """
 
 import os
@@ -36,7 +41,6 @@ HELPER = "ci_tools/pipeline_ci.py"
 OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".gitlab-ci-cluster.yml")
 CLEANUP_ORDER = ("build_stream", "utils", "telemetry", "orchestrator", "discovery",
                  "image_build_manager", "repo_manager")
-TOLERATED_CLEANUPS = ("utils", "discovery")
 DEPLOY_ORDER = ("repo_manager", "image_build_manager", "discovery", "orchestrator", "telemetry")
 RETRY_WHEN = ("runner_system_failure", "api_failure", "scheduler_failure")
 ANY_MODE = '$PIPELINE_MODE == "default" || $PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "deploy"'
@@ -74,9 +78,10 @@ INTRO = """
 #   setup_main: omnia.sh -s, then the inputs of every domain (one stage)
 #   test_main_installation -> <domain> (exec of every tag) -> test_<domain> (verify) ... -> summary
 #
-# A failed cleanup does not stop the other cleanups; nothing is installed after it. A failed
-# domain exec stops the pipeline (its verify and the later domains are skipped); a failed verify
-# does not stop the next domain.
+# A failed initialization skips every other stage; only summary runs. A failed cleanup does not
+# stop the other cleanups, but nothing is installed after it. A failed domain exec stops the
+# pipeline (its verify and the later domains are skipped); a failed verify does not stop the next
+# domain.
 #
 # Variables: DOMAINS (default, or a regex such as repo_manager|orchestrator), SKIP_STAGES,
 # ENABLE_SETUP, ENABLE_DISCOVERY, TEST_MODE, DRY_RUN, VERBOSE, <DOMAIN>_TAGS (comma list of FVT
@@ -250,13 +255,13 @@ def render() -> str:
     for domain in CLEANUP_ORDER:
         name = f"cleanup_{domain}"
         jobs.append(_job(name, name, [f"cleanup {domain}"],
-                         [f"{CLEANUP_MODE} && {_domain_condition(domain)}"], when="always",
+                         [f"{CLEANUP_MODE} && {_domain_condition(domain)}"],
                          needs=["initialization"], optional=list(previous),
-                         allow_failure=domain in TOLERATED_CLEANUPS, skip=domain))
+                         allow_failure=True, skip=domain))
         previous.append(name)
     jobs.append(_job("cleanup_omnia", "cleanup_omnia", ["cleanup-omnia"],
-                     [f'{CLEANUP_MODE} && $DOMAINS == "default"'], when="always",
-                     needs=["initialization"], optional=list(previous), allow_failure=False))
+                     [f'{CLEANUP_MODE} && $DOMAINS == "default"'],
+                     needs=["initialization"], optional=list(previous), allow_failure=True))
     jobs.append(_job("setup_main", "setup_main", ["setup-main"],
                      ['$ENABLE_SETUP == "true"', DEPLOY_MODE]))
     jobs.append(_job("test_main_installation", "test_main_installation", ["verify main"],
@@ -272,7 +277,7 @@ def render() -> str:
                          skip=domain, id_tokens=True))
     summary = _job("summary", "summary", ["summary"], [ANY_MODE], when="always",
                    optional=[name for name in stages if name != "summary"],
-                   allow_failure=True, artifacts=["pipeline_reports/", "pipeline_job_status/"],
+                   allow_failure=False, artifacts=["pipeline_reports/", "pipeline_job_status/"],
                    variables={"PIPELINE_JOB_ORDER": ",".join(s for s in stages if s != "summary")})
     jobs.append(summary)
     for lines in jobs:

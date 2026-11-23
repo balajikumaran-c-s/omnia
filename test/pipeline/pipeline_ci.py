@@ -39,7 +39,9 @@ over SSH:
     stage <domain> <tag>  fvt_<domain> <tag> exec
     verify <domain|main>  test config and credentials, then TEST_<DOMAIN>_CMD (default
                           ./run_validation.sh fvt_<domain> verify)
-    summary               status of every job; fails when one failed
+    summary               status of every job and the email; fails the pipeline when initialization,
+                          a cleanup, setup_main or a domain exec failed (a failed verify or a
+                          tolerated cleanup, utils and discovery, does not)
 
 DRY_RUN=true prints what would run on the OIM and changes nothing.
 
@@ -75,6 +77,7 @@ PROTECTED_PATHS = ("/", "/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib6
                    "/sys", "/tmp",  # nosec B108
                    "/usr", "/var")  # deny list entries, never used as a path
 STATUS_DIR = "pipeline_job_status"
+TOLERATED_JOBS = ("cleanup_utils", "cleanup_discovery")
 COMMIT_FILE = "actual_commit_sha.txt"
 REPORT_DIR = "pipeline_reports"
 MAX_REPORTS = 50
@@ -295,6 +298,24 @@ def require_ready() -> None:
               "(SSH, variables, an unreachable NFS share) and run the pipeline again")
 
 
+def failed_cleanups() -> List[str]:
+    """Return the cleanup jobs that failed (the tolerated ones do not count)."""
+    return [name for name, status, _ in _statuses()
+            if status == "failed" and name.startswith("cleanup_") and name not in TOLERATED_JOBS]
+
+
+def require_cleanups_ok() -> None:
+    """Fail when a cleanup failed, so nothing is installed or deployed after it.
+
+    The cleanup jobs are allowed to fail so that every cleanup runs; this is the gate that
+    stops the install, and so every stage after it, with a red pipeline.
+    """
+    failed = failed_cleanups()
+    if failed and _env("DRY_RUN").lower() != "true":
+        _fail(f"{', '.join(failed)} failed, so nothing is installed or deployed. HOW TO FIX: "
+              "read the log of that cleanup job, fix the cause and run the pipeline again")
+
+
 def checkout() -> int:
     """Finish the checkout the initialization job cloned: record the commit, copy omnia.env."""
     cluster = apply_cluster()
@@ -468,6 +489,7 @@ def setup_main() -> int:
     in default and deploy mode (not in cleanup mode); SKIP_STAGES=inputs skips only that step.
     """
     apply_cluster()
+    require_cleanups_ok()
     mode = _env("PIPELINE_MODE")
     if mode == "default" or _env("ENABLE_SETUP").lower() == "true":
         rc = install()
@@ -607,6 +629,7 @@ def deploy(domain: str) -> int:
     """Domain stage: its credentials, then every FVT tag in exec mode (DOMAIN_TAGS overrides)."""
     apply_cluster()
     _domain(domain)
+    require_cleanups_ok()
     if domain not in DOMAIN_STEPS:
         _fail(f"{domain} has no deploy steps. Valid: {', '.join(DOMAIN_STEPS)}")
     rc = credentials(domain)
@@ -752,7 +775,10 @@ def summary() -> int:
     failed = [n for n, st, _ in jobs if st == "failed"]
     _say(f"{len(jobs)} jobs, {len(failed)} failed" + (f": {', '.join(failed)}" if failed else ""))
     _send_summary_email(jobs, _fetch_reports())
-    return 1 if failed else 0
+    blocking = [n for n in failed if not n.startswith("test_") and n not in TOLERATED_JOBS]
+    if blocking:
+        _say(f"The pipeline fails because of: {', '.join(blocking)}")
+    return 1 if blocking else 0
 
 
 def main(argv: List[str]) -> int:
