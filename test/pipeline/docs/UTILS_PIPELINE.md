@@ -178,8 +178,8 @@ The test stage:
 3. Runs utils validation tests
 
 **Test configuration files** (optional):
-- `clusters/<CLUSTER>/inputs/test/utils/test_config.yml`
-- `clusters/<CLUSTER>/inputs/test/utils/test_run_config.yml`
+- `clusters/<CLUSTER>/test/utils/test_config.yml`
+- `clusters/<CLUSTER>/test/utils/test_run_config.yml`
 
 **Test credentials** (optional):
 - Set `<CLUSTER>_TEST_CREDS` as a GitLab CI/CD File Variable pointing to `test_creds.yml`
@@ -239,7 +239,7 @@ The email includes:
 **Solutions**:
 1. Verify `UTILS_ENABLE=true` (tests require utils pipeline enabled)
 2. Check `<CLUSTER>_TEST_MODE` is set to `"true"`
-3. Verify test input files exist at `clusters/<CLUSTER>/inputs/test/utils/`
+3. Verify test input files exist at `clusters/<CLUSTER>/test/utils/`
 
 ### DRY_RUN not working
 

@@ -130,6 +130,13 @@ fvt_build_stream:
     marker: ""
     dataset: ""
     sync_input: false
+  full_playbook:
+    run: false
+    command: "exec"
+    suite: ""
+    marker: ""
+    dataset: ""
+    sync_input: false
 
 # =============================================================================
 # NFT -- Non-Functional Tests

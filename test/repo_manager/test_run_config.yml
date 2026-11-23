@@ -117,6 +117,13 @@ fvt_repo_manager:
     marker: "destructive"
     dataset: ""
     sync_input: false
+  full_playbook:
+    run: false
+    command: "exec"
+    suite: ""
+    marker: ""
+    dataset: ""
+    sync_input: false
   cleanup_repos:
     run: false
     command: "test"

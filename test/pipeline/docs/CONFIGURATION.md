@@ -91,7 +91,7 @@ cluster1:
 | `pipeline.enable_discovery` | `false` | Enable discovery stage after image_build_manager |
 | `pipeline.test_mode` | `false` | Enable test stages after deployment |
 | `pipeline.dry_run` | `false` | Simulate without making changes |
-| `pipeline.verbose` | `false` | Enable detailed logging (`-vvv`) |
+| `pipeline.verbose` | `false` | Detailed logging: pytest `-v` and ansible `-vvv` (`--ansible-verbosity 3`) in the cluster pipeline |
 | `pipeline.skip_stages` | `""` | Comma-separated stages to skip |
 
 #### Deploy Tags
@@ -186,6 +186,8 @@ For each cluster, these variables are created with the cluster name prefix (e.g.
 | `<CLUSTER>_TEST_MODE` | config | Enable tests |
 | `<CLUSTER>_DRY_RUN` | config | Dry-run mode |
 | `<CLUSTER>_VERBOSE` | config | Verbose logging |
+| `PIPELINE_API_TOKEN` | masked, protected | Project access token (`read_api`, Reporter) used by the summary to read the stage logs for the HTML report |
+| `<CLUSTER>_CHECKOUT_MODE` | config | Omnia checkout on the OIM: `update` (default), `recreate` or `keep` |
 | `<CLUSTER>_REPO_MANAGER_TAGS` | config | Cluster pipeline: FVT tags (comma list, exec mode). Other pipelines: ansible tags |
 | `<CLUSTER>_IMAGE_BUILD_MANAGER_TAGS` | config | FVT tags (cluster pipeline) |
 | `<CLUSTER>_ORCHESTRATOR_TAGS` | config | FVT tags (cluster pipeline) |
@@ -343,7 +345,7 @@ python3 setup_gitlab_project.py --update-file \
     --token glpat-xxxx \
     --project-name omnia-pipeline \
     --file /path/to/omnia.env \
-    --repo-path clusters/cluster1/inputs/omnia.env
+    --repo-path clusters/cluster1/src/main/omnia.env
 ```
 
 ### Upload a local directory to the repo
@@ -354,7 +356,7 @@ python3 setup_gitlab_project.py --upload-dir \
     --token glpat-xxxx \
     --project-name omnia-pipeline \
     --dir /path/to/test_configs/ \
-    --repo-path clusters/cluster1/inputs/test/orchestrator/
+    --repo-path clusters/cluster1/test/orchestrator/
 ```
 
 ### List CI/CD variables

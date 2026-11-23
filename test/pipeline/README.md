@@ -34,7 +34,7 @@ For every cluster, in this order:
    runs `omnia.sh --cleanup --all`. If any cleanup failed, nothing is installed and the pipeline
    ends red. If initialization fails, every other stage is skipped and only the summary runs.
 3. **Install** (`setup_main`, one stage): `omnia.sh -s` creates the Omnia venv and runs every
-   `domain-init`, then the inputs of every domain (`clusters/<cluster>/inputs/<domain>/`) and the
+   `domain-init`, then the inputs of every domain (`clusters/<cluster>/src/<domain>/input/`) and the
    catalog are copied to `<data>/<domain>/input/<project>/` on the OIM. `fvt_main verify` tests the
    install in the next stage.
 4. **Domains**: repo_manager, image_build_manager, discovery (optional), orchestrator and
@@ -82,12 +82,17 @@ After `setup_gitlab_project.py --create`, the GitLab project holds:
 ```
 .gitlab-ci*.yml, send_email.py, pipeline_config.yml     (no helper code: it comes from the clone)
 clusters/<cluster>/
-  inputs/
-    omnia.env                  Omnia environment of the OIM
-    repo_manager/ image_build_manager/ discovery/ orchestrator/ telemetry/
-    test/<domain>/             Optional test_config.yml and test_run_config.yml
-  catalogs/catalog_rhel.json   Optional catalog
+  src/                         The layout of the Omnia checkout
+    main/omnia.env             Omnia environment of the OIM
+    main/catalog_rhel.json     Optional catalog
+    <domain>/input/            The input files of repo_manager, image_build_manager, discovery,
+                               orchestrator, telemetry (build_stream and utils for their pipelines)
+  test/<domain>/               Optional test_config.yml and test_run_config.yml
 ```
+
+A project made before this layout keeps `clusters/<cluster>/inputs/<domain>/`, `inputs/omnia.env`,
+`catalogs/` and `inputs/test/<domain>/`; the cluster pipeline reads either one (`src/` wins when it
+exists). The build stream and utils pipelines read the `src/` and `test/` layout only.
 
 ---
 
@@ -123,7 +128,7 @@ clusters/<cluster>/
 4. Add the OIM password as the masked variable `<CLUSTER>_TARGET_PASS`
    (for example `CLUSTER1_TARGET_PASS`) in the project's CI/CD settings. It is never stored in
    `pipeline_config.yml`.
-5. Edit the inputs in the project under `clusters/<cluster>/inputs/`.
+5. Edit the inputs in the project under `clusters/<cluster>/src/` (and the test settings under `clusters/<cluster>/test/`).
 6. First run with `DRY_RUN=true` (`dry_run: "true"` in the config): every job prints what it
    would do on the OIM and changes nothing. Then run it for real: **CI/CD > Pipelines > Run
    pipeline**.
@@ -140,7 +145,7 @@ clusters/<cluster>/
 | `enable_setup` | `false` | Run the install (`setup_main`) in `deploy` mode too |
 | `enable_discovery` | `false` | Run the discovery stages |
 | `dry_run` | `false` | Print what would run on the OIM, change nothing |
-| `verbose` | `false` | Ansible verbosity `-vvv` instead of `-v` (utils cleanup) |
+| `verbose` | `false` | pytest `-v` and ansible `-vvv` for the FVT runs of the cluster pipeline |
 | `skip_stages` | `""` | Words of stages to skip, for example `telemetry,nfs_check` (a domain word skips its cleanup, deploy and test; `nfs_check` and `inputs` skip that step inside `initialization` and `setup_main`) |
 | `deploy_tags.<domain>` | per domain | Comma list of FVT tags run in exec mode (variable `<DOMAIN>_TAGS`) |
 | `test_commands.<domain>` | `./run_validation.sh fvt_<domain> verify` | The verify command (variable `TEST_<DOMAIN>_CMD`) |

@@ -41,6 +41,7 @@ FVT_TAGS: List[str] = [
     "build",
     "cleanup",
     "cleanup_images",
+    "full_playbook",
 ]
 
 # =====================================================================
@@ -73,6 +74,7 @@ SUITES: Dict[str, List[str]] = {
     ],
     "cleanup": ["cleanup"],
     "cleanup_images": ["cleanup_images"],
+    "full_playbook": [],
 }
 
 # The catalog-reuse suite performs its own controlled sequence of build
@@ -88,4 +90,5 @@ SUITE_EXEC_OWNERS: Dict[str, List[str]] = {
 EXCLUDE_TAGS: List[str] = [
     "cleanup",
     "cleanup_images",
+    "full_playbook",
 ]

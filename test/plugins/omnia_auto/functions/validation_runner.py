@@ -33,7 +33,9 @@ from typing import Dict, List, Optional, Sequence, Union
 import yaml
 
 from .formatting_func import Colors, _render_summary
-from ..vars.validation_vars import COMMANDS
+from ..vars.validation_vars import (
+    ANSIBLE_VERBOSITY_ENV, COMMANDS, FULL_PLAYBOOK_TAG,
+)
 
 # Regex for safe identifiers from config YAML (no shell metacharacters)
 _SAFE_IDENT_RE = re.compile(r"^[a-zA-Z0-9_\-./]+$")
@@ -415,6 +417,24 @@ class ValidationRunner:
             _err(f"Supported: {', '.join(COMMANDS)}")
             return 1
 
+        self._apply_ansible_verbosity(opts)
+        if opts.pop("full_playbook", ""):
+            if tag or command != "exec":
+                _err(
+                    "--full-playbook is used as: "
+                    f"{self.cat_fvt} exec --full-playbook (without a tag)"
+                )
+                return 2
+            if FULL_PLAYBOOK_TAG not in tags:
+                _err(
+                    f"{self.cat_fvt} has no '{FULL_PLAYBOOK_TAG}' scenario"
+                )
+                return 2
+            tag = FULL_PLAYBOOK_TAG
+        if tag == FULL_PLAYBOOK_TAG and command != "exec":
+            _err(f"'{FULL_PLAYBOOK_TAG}' supports exec only")
+            return 2
+
         if tag and not os.path.isdir(
             os.path.join(self.fvt_dir, tag),
         ):
@@ -489,6 +509,10 @@ class ValidationRunner:
         except ValueError as exc:
             _err(str(exc))
             return 2
+        self._apply_ansible_verbosity(opts)
+        if opts.pop("full_playbook", ""):
+            _err("--full-playbook is supported only for an FVT run")
+            return 2
         if opts["suite"]:
             _err("--suite is supported only for a tagged FVT run")
             return 2
@@ -505,6 +529,13 @@ class ValidationRunner:
     # -----------------------------------------------------------------
 
     @staticmethod
+    def _apply_ansible_verbosity(opts: Dict[str, str]) -> None:
+        """Move ``--ansible-verbosity`` out of the options into the environment."""
+        level = opts.pop("ansible_verbosity", "")
+        if level:
+            os.environ[ANSIBLE_VERBOSITY_ENV] = level
+
+    @staticmethod
     def _parse_options(
         args: List[str],
     ) -> Dict[str, str]:
@@ -515,7 +546,7 @@ class ValidationRunner:
         """
         opts: Dict[str, str] = {
             "suite": "", "marker": "", "verbose": "",
-            "debug": "",
+            "debug": "", "full_playbook": "", "ansible_verbosity": "",
         }
         i = 0
         while i < len(args):
@@ -538,6 +569,18 @@ class ValidationRunner:
                 opts["debug"] = "true"
                 opts["verbose"] = "-vvs"
                 i += 1
+            elif args[i] == "--full-playbook":
+                opts["full_playbook"] = "true"
+                i += 1
+            elif args[i] == "--ansible-verbosity":
+                if i + 1 >= len(args) or args[i + 1] not in (
+                    "0", "1", "2", "3", "4",
+                ):
+                    raise ValueError(
+                        "--ansible-verbosity requires a value from 0 to 4"
+                    )
+                opts["ansible_verbosity"] = args[i + 1]
+                i += 2
             else:
                 raise ValueError(f"Unknown option: {args[i]}")
         return opts
@@ -1564,6 +1607,9 @@ class ValidationRunner:
         print("  --marker <expr>   Filter by marker")
         print("  -v, --verbose     Increase verbosity")
         print("  --debug           Full debug (-vvs)")
+        print("  --ansible-verbosity <0-4>  Ansible verbosity of every playbook")
+        print(f"  --full-playbook   exec: run the complete playbook "
+              f"(tag {FULL_PLAYBOOK_TAG}, no --tags)")
         print()
         self._print_suite_exec_owner_help()
         f = self.cat_fvt

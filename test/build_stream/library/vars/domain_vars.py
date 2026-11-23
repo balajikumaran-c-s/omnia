@@ -41,6 +41,7 @@ FVT_TAGS: List[str] = [
     "prepare",
     "execute",
     "cleanup",
+    "full_playbook",
 ]
 
 # A no-tag FVT command follows this lifecycle.  ``test`` performs
@@ -97,6 +98,7 @@ SUITES: Dict[str, List[str]] = {
         "log_query",
     ],
     "cleanup": ["gitlab", "build_stream"],
+    "full_playbook": [],
 }
 
 # =====================================================================
@@ -106,4 +108,5 @@ SUITES: Dict[str, List[str]] = {
 EXCLUDE_TAGS: List[str] = [
     "prepare_base",
     "cleanup",
+    "full_playbook",
 ]

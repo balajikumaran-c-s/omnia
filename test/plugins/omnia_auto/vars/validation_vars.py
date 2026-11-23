@@ -27,3 +27,17 @@ from typing import Tuple
 # =====================================================================
 
 COMMANDS: Tuple[str, ...] = ("exec", "verify", "test")
+
+# FVT tag whose exec runs the complete domain playbook (no ``--tags``); selected by
+# ``./run_validation.sh fvt_<domain> exec --full-playbook``.
+FULL_PLAYBOOK_TAG: str = "full_playbook"
+
+# Environment variable that sets the ansible verbosity (0-4) of every playbook run.
+ANSIBLE_VERBOSITY_ENV: str = "OMNIA_ANSIBLE_VERBOSITY"
+
+# Separates a test's screen output from the full playbook output kept in the report details.
+PLAYBOOK_OUTPUT_MARKER: str = "\n=== PLAYBOOK OUTPUT ===\n"
+
+# Longest playbook output kept per test in the report (the head and the tail are kept).
+MAX_PLAYBOOK_OUTPUT_CHARS: int = 400000
+PLAYBOOK_OUTPUT_HEAD_CHARS: int = 30000

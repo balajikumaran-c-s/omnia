@@ -74,6 +74,7 @@ REPO_MANAGER_TEST_CLEANUP_REPO=x86_64_rhel_10.0_test_repo \
 | `prepare` | Deploy Pulp server and verify container/services |
 | `execute` | Download and sync repositories |
 | `status` | Generate and verify repo_status.yml |
+| `full_playbook` | Complete `repo_manager.yml` without `--tags`. Explicit only: `./run_validation.sh fvt_repo_manager exec --full-playbook` |
 | `cleanup` | Cleanup Pulp server and verify removal; the credential store follows `cleanup_credentials` in `test_config.yml` (`false` keeps it) |
 | `cleanup_repos` | Explicitly selected exact repository cleanup and state invalidation |
 | `policy` | Test repository policy configurations |

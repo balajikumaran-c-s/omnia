@@ -90,7 +90,7 @@ exist before the clone. All of them need the cluster variables
 | Command | What it does |
 |---|---|
 | `initialize` | The whole initialization stage: `init`, `checkout` and, in `default` and `cleanup` mode with `DOMAINS=default`, `nfs-check`. Leaves the `initialization` marker only when all of them passed |
-| `init` | Checks `CLUSTER`, the cluster variables, `OMNIA_REPO` and `OMNIA_BRANCH`, `OMNIA_INSTALL_PATH`, the host key policy, `clusters/<cluster>/inputs/omnia.env` and the SSH connection (retried) |
+| `init` | Checks `CLUSTER`, the cluster variables, `OMNIA_REPO` and `OMNIA_BRANCH`, `OMNIA_INSTALL_PATH`, the host key policy, `clusters/<cluster>/src/main/omnia.env` and the SSH connection (retried) |
 | `checkout` | Records the commit of the clone (`actual_commit_sha.txt`) and copies `omnia.env` into it |
 | `nfs-check` | `fvt_utils cleanup_nfs_shares verify --marker sanity`: every Slurm and K8s share of the OIM's `storage_config.yml` mounts read-only |
 | `cleanup <domain>` | Checks the marker, then `fvt_<domain> cleanup test` (exec, then verify) in the Omnia venv; utils: `fvt_utils cleanup test --marker cleanup` |
@@ -131,11 +131,13 @@ then copied from that checkout into `ci_tools/` for the later jobs.
 
 The inputs are copied by the `setup_main` stage after `omnia.sh -s` (in `default` and `deploy` mode),
 which has created the domain folders and their default inputs. For every deploy domain (repo_manager, image_build_manager, discovery, orchestrator,
-telemetry) that has a folder `clusters/<cluster>/inputs/<domain>/` in the
+telemetry) that has a folder `clusters/<cluster>/src/<domain>/input/` in the
 project, its content is copied to `<OMNIA_DATA_PATH>/<domain>/input/<OMNIA_PROJECT_NAME>/` on the
-OIM (both resolved from the Omnia venv). The catalog `clusters/<cluster>/catalogs/catalog_rhel.json`
+OIM (both resolved from the Omnia venv). The catalog `clusters/<cluster>/src/main/catalog_rhel.json`
 is copied to `<data>/catalog/` when present. The stage fails if no domain folder exists or a copy
-fails. The layout of the project is the same as before the redesign.
+fails. The project layout is `clusters/<cluster>/src/<domain>/input/`, `src/main/` (omnia.env and
+catalog) and `test/<domain>/`; a project with the older `inputs/` layout is still read (`src/` wins).
+`pxe_mapping_file.csv` is given mode 640, which the orchestrator validation requires.
 
 ---
 
@@ -145,15 +147,22 @@ fails. The layout of the project is the same as before the redesign.
 the Omnia venv (the test requirements of the domain are installed into the venv first), and
 stops at the first failure:
 
-| Domain | Default tags |
-|---|---|
-| repo_manager | precheck, prepare, execute, status |
-| image_build_manager | validate, prepare, build |
-| discovery | precheck, validate, execute |
-| orchestrator | precheck, prepare, provision |
-| telemetry | precheck, validate, deploy |
+**With tags or without.** `deploy_tags.<domain>` in the config (variable `<DOMAIN>_TAGS`, a comma
+list such as `prepare,execute`) runs exactly those tags, one `./run_validation.sh fvt_<domain>
+<tag> exec` each; every tag is `ansible-playbook <domain>.yml --tags <tag>`. With no tags the
+**complete playbook** runs once without `--tags`: `./run_validation.sh fvt_<domain> exec
+--full-playbook` (the `full_playbook` tag, which every domain with a playbook has: repo_manager,
+image_build_manager, discovery, orchestrator, telemetry, build_stream; it is explicit only and not
+part of any default run; utils has none because `utils.yml` is meant to run one tag at a time).
 
-`deploy_tags.<domain>` in the config (variable `<DOMAIN>_TAGS`) replaces the list.
+**Verbose.** `VERBOSE=true` adds `-v --ansible-verbosity 3` to every FVT call (pytest `-v` and
+`ansible-playbook -vvv`). `--ansible-verbosity <0-4>` is a runner option of every domain and sets
+the environment variable `OMNIA_ANSIBLE_VERBOSITY`; without it the ansible verbosity stays at the
+default of the test configuration (1).
+
+Before every FVT call the test requirements of the domain are installed and the `omnia_auto`
+wheel of the checkout (`test/plugins/dist`) is force-installed, so the branch under test is the
+code that runs.
 
 **Credentials.** The login is the GitLab JWT (`VAULT_ID_TOKEN`, audience `BAO_SERVER_URL`, role
 `BAO_AUTH_ROLE`); the secret is read from `<BAO_DATA_PATH>/<domain>`. The values are written to
@@ -164,11 +173,24 @@ is generated if missing). File names: `repo_manager_config_credentials.yml`,
 stage fails. Only the number of fields is printed.
 
 **Test stages.** `verify <domain>` copies `test_config.yml` and `test_run_config.yml` from
-`clusters/<cluster>/inputs/test/<domain>/` (defaults of the checkout when absent), the test
+`clusters/<cluster>/test/<domain>/` (defaults of the checkout when absent), the test
 credentials (the File variable `<CLUSTER>_TEST_CREDS`, and for orchestrator and telemetry the
 OpenBao secret `test_<domain>`, which wins), encrypts them, then runs the command. The command is
 `TEST_<DOMAIN>_CMD`, default `./run_validation.sh fvt_<domain> verify`; it must start with
 `./run_validation.sh` and use plain characters only.
+
+---
+
+## NFS check in the initialization stage
+
+When the orchestrator is selected the initialization stage checks the NFS shares before anything
+is cleaned. It reads the NFS entries (`fs_type: nfs`) of the project's
+`clusters/<cluster>/src/orchestrator/input/storage_config.yml`, so it works on the first run, before
+Omnia is installed. From the OIM, for every share: the NFS server answers on port 2049, then the
+export is mounted read-only on a temporary folder and unmounted. Every share is checked and one
+line is printed per share (`OK` or `FAIL` with the reason: no answer, mount refused, `nfs-utils`
+missing). A failed share fails the initialization, so every other stage is skipped and the mail
+shows the reason. `SKIP_STAGES=nfs_check` skips it. The check needs `nfs-utils` on the OIM.
 
 ---
 
@@ -189,8 +211,11 @@ cd test/utils
 It empties the mounts `nfs_slurm` and `nfs_k8s` (`nfs_shares` in `test/utils/test_config.yml`) of
 the `storage_config.yml` in the orchestrator input folder of the OIM
 (`<OMNIA_DATA_PATH>/orchestrator/input/<OMNIA_PROJECT_NAME>/`, or the file in `nfs_storage_config`).
-In the pipeline it runs in the `cleanup_omnia` stage, before `omnia.sh --cleanup --all`, because
-that removes the Omnia venv the scenario runs in. On an OIM without an Omnia venv (or without that
+In the pipeline it runs in the `cleanup_omnia` stage, before the Omnia cleanup, because that
+removes the Omnia venv the scenario runs in. The Omnia cleanup itself also goes through
+`run_validation`: `test/main` (`cleanup_all: true`, set by the pipeline) runs from its own
+`test/main/.venv` (`./setup_env.sh --venv`, then `./run_validation.sh fvt_main cleanup test`),
+because the cleanup removes the Omnia venv and `fvt_main cleanup` refuses to run from it. On an OIM without an Omnia venv (or without that
 file, or without NFS mounts) there is nothing to empty and the step passes.
 
 1. The check in `initialization` (read-only): every share is mounted read-only and unmounted. A
@@ -226,7 +251,7 @@ for the OIM.
 
 ---
 
-## Summary and email
+## Summary, HTML report and email
 
 The `summary` job always runs. It reads `pipeline_job_status/*.json` (name, status and job link
 of every job, written by the `after_script` of each job), prints the table and exits 1 when a
@@ -235,6 +260,20 @@ job failed. Then it copies the HTML and JSON test reports written during this pi
 one email when `EMAIL_RECIPIENTS`, `EMAIL_SENDER` and `SMTP_SERVER` are set
 ([EMAIL_NOTIFICATIONS.md](EMAIL_NOTIFICATIONS.md)). A mail that cannot be sent is reported in a
 banner in the log but does not change the result of the pipeline.
+
+**The HTML report** `pipeline_report/pipeline_<id>_report.html` (a job artifact, and attached to the
+mail) is one file without external assets: the pipeline information, cards, and one collapsible
+block per stage with its status, duration, failure reason and its **whole log in a scrollable
+pane**. It has a day and a night theme (the system setting, with a button), a filter, a search in
+the stage names and logs, expand and collapse all, line wrapping and a copy button; very long logs
+keep their head and their tail. The logs come from the GitLab API with the masked, protected CI/CD
+variable `PIPELINE_API_TOKEN` (a project access token with the `read_api` scope, role Reporter; the
+job token cannot read logs). Without it, each stage uses the output its own job kept in
+`pipeline_job_logs/` (the output of the helper, without GitLab's own `$ command` lines).
+
+**Test reports of the cleanup.** The Omnia cleanup removes `/opt/omnia/reports`, so each cleanup
+stage copies the reports it wrote to `pipeline_reports/` (prefixed with the job name) before the
+cleanup, and the summary attaches them with the reports of the later stages.
 
 ---
 

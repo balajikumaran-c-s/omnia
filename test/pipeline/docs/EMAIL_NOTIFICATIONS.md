@@ -164,6 +164,14 @@ Please find the detailed test reports attached.
 This is an automated email from GitLab CI/CD pipeline.
 ```
 
+## HTML report of the stages
+
+The cluster pipeline summary attaches `pipeline_<id>_report.html`: every stage with its status,
+duration, failure reason and a scrollable log, in a day and a night theme. See
+[CLUSTER_PIPELINE.md](CLUSTER_PIPELINE.md) (Summary, HTML report and email).
+
+---
+
 ## Test Report Attachments
 
 ### HTML Report

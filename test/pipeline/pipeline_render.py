@@ -38,6 +38,7 @@ import sys
 from typing import List, Optional, Sequence
 
 HELPER = "ci_tools/pipeline_ci.py"
+COMMON_ARTIFACTS = ("pipeline_job_status/", "pipeline_job_logs/", "pipeline_reports/")
 OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".gitlab-ci-cluster.yml")
 CLEANUP_ORDER = ("build_stream", "utils", "telemetry", "orchestrator", "discovery",
                  "image_build_manager", "repo_manager")
@@ -358,12 +359,12 @@ def render() -> str:
     out += [f"      - {w}" for w in RETRY_WHEN]
     out += ["  before_script:", f"    - {_q(BEFORE_SCRIPT)}", "  after_script:"]
     out += [_scalar("    - ", a, "      ") for a in AFTER_SCRIPT]
-    out += ["  artifacts:", "    when: always", "    expire_in: 1 week", "    paths:",
-            "      - pipeline_job_status/", ""]
+    out += ["  artifacts:", "    when: always", "    expire_in: 1 week", "    paths:"]
+    out += [f"      - {path}" for path in COMMON_ARTIFACTS] + [""]
 
     jobs: List[List[str]] = [
         _job("initialization", "initialization", ["initialize"], [ANY_MODE], allow_failure=False,
-             artifacts=["pipeline_job_status/", "ci_tools/", "actual_commit_sha.txt"],
+             artifacts=[*COMMON_ARTIFACTS, "ci_tools/", "actual_commit_sha.txt"],
              python_blocks=[BOOTSTRAP]),
     ]
     previous: List[str] = []
@@ -393,7 +394,7 @@ def render() -> str:
     summary = _job("summary", "summary", ["summary"], [ANY_MODE], when="always",
                    python_blocks=[SUMMARY_FALLBACK],
                    optional=[name for name in stages if name != "summary"],
-                   allow_failure=False, artifacts=["pipeline_reports/", "pipeline_job_status/"],
+                   allow_failure=False, artifacts=[*COMMON_ARTIFACTS, "pipeline_report/"],
                    variables={"PIPELINE_JOB_ORDER": ",".join(s for s in stages if s != "summary")})
     jobs.append(summary)
     for lines in jobs:

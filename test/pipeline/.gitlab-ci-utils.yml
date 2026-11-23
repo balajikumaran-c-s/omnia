@@ -312,7 +312,7 @@ setup_environment:
     # Step 5: Copy cluster-specific omnia.env to the cloned repo (if it exists)
     - echo "Step 5 - Copying cluster-specific omnia.env to target omnia repo"
     - |
-      OMNIA_ENV_PATH="$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/omnia.env"
+      OMNIA_ENV_PATH="$CI_PROJECT_DIR/clusters/$CLUSTER/src/main/omnia.env"
       if [ -f "$OMNIA_ENV_PATH" ]; then
         $SCP_CMD "$OMNIA_ENV_PATH" $TARGET:$OMNIA_INSTALL_PATH/src/main/omnia.env
         echo "  Verifying omnia.env on target"
@@ -363,7 +363,7 @@ setup_environment:
         # Create catalog directory on target
         $SSH_CMD $TARGET "mkdir -p $OMNIA_DATA_PATH/catalog"
         # Copy catalog file if it exists in the pipeline
-        CATALOG_PATH="$CI_PROJECT_DIR/clusters/$CLUSTER/catalogs/catalog_rhel.json"
+        CATALOG_PATH="$CI_PROJECT_DIR/clusters/$CLUSTER/src/main/catalog_rhel.json"
         echo "  Looking for catalog at: $CATALOG_PATH"
         if [ -f "$CATALOG_PATH" ]; then
           echo "  Found catalog file, copying..."
@@ -379,7 +379,7 @@ setup_environment:
         else
           echo "  WARNING: No catalog file found at $CATALOG_PATH"
           echo "  Available files:"
-          ls -la "$CI_PROJECT_DIR/clusters/$CLUSTER/catalogs/" || echo "  catalogs directory not found"
+          ls -la "$CI_PROJECT_DIR/clusters/$CLUSTER/src/main/" || echo "  catalogs directory not found"
         fi
       else
         echo "Step 8 - Skipping catalog copy (cleanup mode)"
@@ -445,12 +445,12 @@ install_os:
     - echo "Step 2 - Copying utils input files to target"
     - |
       $SSH_CMD $TARGET "mkdir -p $INPUT_DIR"
-      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/utils" ]; then
-        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/inputs/utils/. $TARGET:$INPUT_DIR/
+      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/src/utils/input" ]; then
+        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/src/utils/input/. $TARGET:$INPUT_DIR/
         echo "  Copied utils input files to $INPUT_DIR/"
         $SSH_CMD $TARGET "ls -la $INPUT_DIR/"
       else
-        echo "  WARNING: clusters/$CLUSTER/inputs/utils/ not found — using defaults"
+        echo "  WARNING: clusters/$CLUSTER/src/utils/input/ not found — using defaults"
       fi
 
     # Step 3: Fetch credential file from OpenBao
@@ -571,12 +571,12 @@ log_collection_cluster:
     - echo "Step 2 - Copying utils input files to target"
     - |
       $SSH_CMD $TARGET "mkdir -p $INPUT_DIR"
-      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/utils" ]; then
-        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/inputs/utils/. $TARGET:$INPUT_DIR/
+      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/src/utils/input" ]; then
+        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/src/utils/input/. $TARGET:$INPUT_DIR/
         echo "  Copied utils input files to $INPUT_DIR/"
         $SSH_CMD $TARGET "ls -la $INPUT_DIR/"
       else
-        echo "  WARNING: clusters/$CLUSTER/inputs/utils/ not found — using defaults"
+        echo "  WARNING: clusters/$CLUSTER/src/utils/input/ not found — using defaults"
       fi
 
     # Step 3: Run utils log collection
@@ -659,12 +659,12 @@ log_collection_oim:
     - echo "Step 2 - Ensuring utils input files are available on target"
     - |
       $SSH_CMD $TARGET "mkdir -p $INPUT_DIR"
-      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/utils" ]; then
-        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/inputs/utils/. $TARGET:$INPUT_DIR/
+      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/src/utils/input" ]; then
+        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/src/utils/input/. $TARGET:$INPUT_DIR/
         echo "  Copied utils input files to $INPUT_DIR/"
         $SSH_CMD $TARGET "ls -la $INPUT_DIR/"
       else
-        echo "  WARNING: clusters/$CLUSTER/inputs/utils/ not found — using defaults"
+        echo "  WARNING: clusters/$CLUSTER/src/utils/input/ not found — using defaults"
       fi
 
     # Step 3: Run utils OIM log collection
@@ -732,7 +732,7 @@ test_utils:
     # Step 1: Copy test input files to target
     - echo "Step 1 - Copying utils test input files to target"
     - |
-      TEST_SRC="$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/test/utils"
+      TEST_SRC="$CI_PROJECT_DIR/clusters/$CLUSTER/test/utils"
       TEST_DST="$OMNIA_INSTALL_PATH/test/utils"
 
       # Create test directory on target
@@ -755,7 +755,7 @@ test_utils:
         echo "  Copied all test input files to $TEST_DST/"
         $SSH_CMD $TARGET "ls -la $TEST_DST/"
       else
-        echo "  INFO: clusters/$CLUSTER/inputs/test/utils/ not found — using defaults"
+        echo "  INFO: clusters/$CLUSTER/test/utils/ not found — using defaults"
       fi
 
       # Copy test credentials from CI/CD File Variable (if configured)
@@ -939,7 +939,7 @@ summary:
       report_paths = {}
       report_names = {}
 
-      config_path = f"clusters/{cluster}/inputs/test/utils/test_config.yml"
+      config_path = f"clusters/{cluster}/test/utils/test_config.yml"
       try:
         with open(config_path, encoding="utf-8") as f:
           cfg = yaml.safe_load(f)

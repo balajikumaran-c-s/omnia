@@ -228,7 +228,7 @@ nothing was cleaned`. If the shares cannot be emptied, `cleanup_omnia` does not 
 2. `the export path ... is a system directory`, or `... contains /root/omnia`: the share points
    at a protected path on the OIM. Fix `mounts` in the `storage_config.yml` of the orchestrator
    input folder of the OIM (`<OMNIA_DATA_PATH>/orchestrator/input/<project>/`), or in the project
-   input `clusters/<cluster>/inputs/orchestrator/storage_config.yml` for the next run.
+   input `clusters/<cluster>/src/orchestrator/input/storage_config.yml` for the next run.
 3. `entries could not be removed`: the export probably squashes root (it needs `no_root_squash`
    for the OIM), or a client still writes to it (stop it, for example kubelet on a node).
 4. To not touch the shares, remove `nfs_slurm` and `nfs_k8s` from `mounts` (or from `nfs_shares` in
@@ -245,9 +245,9 @@ nothing was cleaned`. If the shares cannot be emptied, `cleanup_omnia` does not 
 
 **Solutions:**
 
-1. Check input files in `clusters/<name>/inputs/<domain>/`:
+1. Check input files in `clusters/<name>/src/<domain>/input/`:
    - Go to your GitLab repository
-   - Navigate to `clusters/cluster1/inputs/`
+   - Navigate to `clusters/cluster1/src/`
    - Verify all required files exist and have correct content
 
 2. Enable verbose logging for detailed Ansible output:
@@ -288,7 +288,7 @@ nothing was cleaned`. If the shares cannot be emptied, `cleanup_omnia` does not 
 
 1. Check test configuration files:
    - Go to your GitLab repository
-   - Navigate to `clusters/cluster1/inputs/test/<domain>/`
+   - Navigate to `clusters/cluster1/test/<domain>/`
    - Verify test config files exist
 
 2. Run tests manually on target:

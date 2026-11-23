@@ -64,7 +64,7 @@ import time
 import urllib.error
 import urllib.request
 from collections import deque
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 DOMAINS = ("repo_manager", "image_build_manager", "discovery", "orchestrator", "telemetry",
            "utils", "build_stream")
@@ -104,8 +104,50 @@ TEST_CREDENTIALS = ("orchestrator", "telemetry")
 BAO_TIMEOUT = 30
 SSH_RETRIES = 5
 SSH_RETRY_WAIT = 10
-INPUTS_ROOT = "clusters/{cluster}/inputs"
-CATALOG_FILE = "clusters/{cluster}/catalogs/catalog_rhel.json"
+LOG_DIR = "pipeline_job_logs"
+HTML_REPORT_DIR = "pipeline_report"
+MAX_LOG_BYTES = 3000000
+SENSITIVE_INPUTS = ("pxe_mapping_file.csv",)
+NFS_PORT = 2049
+PIP_INSTALL = """pip install -q -r requirements.txt
+pip install -q --force-reinstall --no-deps ../plugins/dist/omnia_auto-*.whl"""
+ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
+class Layout:
+    """Where the files of a cluster are in the project.
+
+    New layout (mirrors the Omnia checkout): clusters/<cluster>/src/<domain>/input/,
+    src/main/omnia.env, src/main/catalog_rhel.json and test/<domain>/. Older projects keep
+    clusters/<cluster>/inputs/<domain>/, inputs/omnia.env, catalogs/ and inputs/test/<domain>/.
+    """
+
+    def __init__(self, cluster: str):
+        self.root = f"clusters/{cluster}"
+        self.new = os.path.isdir(f"{self.root}/src")
+
+    def domain_dir(self, domain: str) -> str:
+        return f"{self.root}/src/{domain}/input" if self.new else f"{self.root}/inputs/{domain}"
+
+    def test_dir(self, domain: str) -> str:
+        return f"{self.root}/test/{domain}" if self.new else f"{self.root}/inputs/test/{domain}"
+
+    @property
+    def env_file(self) -> str:
+        return f"{self.root}/src/main/omnia.env" if self.new else f"{self.root}/inputs/omnia.env"
+
+    @property
+    def catalog(self) -> str:
+        return (f"{self.root}/src/main/catalog_rhel.json" if self.new
+                else f"{self.root}/catalogs/catalog_rhel.json")
+
+    @property
+    def storage_config(self) -> str:
+        return self.domain_dir("orchestrator") + "/storage_config.yml"
+
+    @property
+    def name(self) -> str:
+        return "src/ and test/" if self.new else "inputs/ (older layout)"
 ACTIVATE = """DATA=$(grep '^OMNIA_DATA_PATH=' {install}/src/main/omnia.env 2>/dev/null | cut -d= -f2)
 DATA="${{DATA:-/opt/omnia}}"; DATA="${{DATA%/}}"
 if [ ! -f "$DATA/activate-omnia.sh" ]; then {missing}; fi
@@ -117,8 +159,27 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
+_LOGGED = [0]
+
+
+def _log(text: str) -> None:
+    """Keep what this job printed (an artifact), for the HTML report of the summary."""
+    job = _env("CI_JOB_NAME")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", job) or _LOGGED[0] > MAX_LOG_BYTES:
+        return
+    text = _redact(ANSI_RE.sub("", text))
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        with open(f"{LOG_DIR}/{job}.log", "a", encoding="utf-8") as handle:
+            handle.write(text)
+        _LOGGED[0] += len(text)
+    except OSError:
+        pass
+
+
 def _say(message: str) -> None:
     print(message, flush=True)
+    _log(message + "\n")
 
 
 def _record_error(message: str) -> None:
@@ -136,6 +197,7 @@ def _record_error(message: str) -> None:
 
 def _fail(message: str) -> None:
     print(f"ERROR: {message}", file=sys.stderr, flush=True)
+    _log(f"ERROR: {message}\n")
     _record_error(message)
     raise SystemExit(1)
 
@@ -228,6 +290,7 @@ def remote(script: str, stdin: Optional[bytes] = None, capture: bool = False,
                 lines.append(line)
             else:
                 print(line, end="", flush=True)
+                _log(line)
         rc = proc.wait()
         out = "".join(lines)
         if rc != 255 or attempt == attempts:
@@ -271,8 +334,8 @@ def _tag(name: str) -> str:
 
 
 def _verbosity() -> str:
-    """-v for the FVT runs when VERBOSE=true."""
-    return "-v" if _env("VERBOSE").lower() == "true" else ""
+    """With VERBOSE=true: pytest -v and ansible -vvv for the FVT runs."""
+    return "-v --ansible-verbosity 3" if _env("VERBOSE").lower() == "true" else ""
 
 
 def _activate(missing: str) -> str:
@@ -286,12 +349,13 @@ def init() -> int:
     for name, pattern in (("OMNIA_REPO", SAFE_URL), ("OMNIA_BRANCH", SAFE_BRANCH)):
         if not pattern.match(_env(name)):
             _fail(f"{name} is empty or has unsafe characters. HOW TO FIX: set the CI/CD variable")
-    root = INPUTS_ROOT.format(cluster=cluster)
-    if not os.path.isfile(os.path.join(root, "omnia.env")):
-        _fail(f"{root}/omnia.env not found in the project")
-    present = [d for d in DOMAIN_STEPS if os.path.isdir(os.path.join(root, d))]
+    layout = Layout(cluster)
+    if not os.path.isfile(layout.env_file):
+        _fail(f"{layout.env_file} not found in the project")
+    present = [d for d in DOMAIN_STEPS if os.path.isdir(layout.domain_dir(d))]
     _say(f"Cluster {cluster}: OIM {_env('PIPELINE_TARGET_IP')}, user {_env('PIPELINE_TARGET_USER')}")
     _say(f"Omnia {_env('OMNIA_REPO')} branch {_env('OMNIA_BRANCH')} at {install_path()}")
+    _say(f"Project layout: {layout.name}")
     _say(f"Input folders in the project: {', '.join(present) or 'none'}")
     rc, _ = remote("echo SSH connection successful", retry=True)
     return rc
@@ -355,25 +419,35 @@ def checkout() -> int:
     _say(f"Omnia commit {commit}")
     with open(COMMIT_FILE, "w", encoding="utf-8") as handle:
         handle.write(commit + "\n")
-    env_file = os.path.join(INPUTS_ROOT.format(cluster=cluster), "omnia.env")
-    with open(env_file, "rb") as handle:
+    with open(Layout(cluster).env_file, "rb") as handle:
         rc, _ = remote(f"cat > {shlex.quote(path)}/src/main/omnia.env", stdin=handle.read())
     return rc
+
+
+def _domain_selected(domain: str) -> bool:
+    """Return whether DOMAINS (default, or a regex) selects the domain."""
+    selected = _env("DOMAINS")
+    if selected in ("", "default"):
+        return True
+    try:
+        return re.search(selected, domain) is not None
+    except re.error:
+        return True
 
 
 def initialize() -> int:
     """The whole initialization stage: checks, commit and omnia.env, the NFS check.
 
     The marker the cleanup jobs need is left only when every step passed. The NFS check runs
-    only where the NFS shares are emptied later (cleanup or default mode, DOMAINS=default).
+    when the orchestrator is selected (its shares are mounted and, in cleanup and default
+    mode, emptied later) unless SKIP_STAGES names nfs_check.
     """
     for step in (init, checkout):
         rc = step()
         if rc:
             return rc
-    if (_env("PIPELINE_MODE") in ("cleanup", "default") and _env("DOMAINS") == "default"
-            and not _skipped("nfs_check")):
-        rc = nfs_check()
+    if _domain_selected("orchestrator") and not _skipped("nfs_check"):
+        rc = nfs_preflight()
         if rc:
             return rc
     return _mark("initialization", 0)
@@ -386,7 +460,9 @@ def cleanup(domain: str) -> int:
     require_ready()
     extra = "--marker cleanup" if domain == "utils" else ""
     missing = f"echo 'No Omnia venv on the OIM, nothing to clean for {domain}'; exit 0"
-    return _fvt(domain, "cleanup", "test", extra, missing)
+    rc = _fvt(domain, "cleanup", "test", extra, missing)
+    _fetch_reports(f"{_env('CI_JOB_NAME')}__")
+    return rc
 
 
 def _nfs_scenario(command: str, marker: str, what: str) -> int:
@@ -396,30 +472,104 @@ def _nfs_scenario(command: str, marker: str, what: str) -> int:
     return _fvt("utils", "cleanup_nfs_shares", command, f"--marker {marker}", missing)
 
 
-def nfs_check() -> int:
-    """Read-only: every Slurm and K8s share of the OIM's storage_config.yml mounts."""
-    return _nfs_scenario("verify", "sanity", "check")
+NFS_SOURCE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9.-]{0,252}):(/[A-Za-z0-9._/-]{0,250})$")
+NFS_CHECK = """check_one() {
+  name=$1; source=$2; host=${2%%:*}
+  if ! timeout 8 bash -c "exec 3<>/dev/tcp/$host/@PORT@" 2>/dev/null; then
+    echo "FAIL $name $source: the NFS server $host does not answer on port @PORT@"; return 1
+  fi
+  d=$(mktemp -d /run/pipeline-nfs.XXXXXX) || { echo "FAIL $name $source: no temp folder"; return 1; }
+  if ! err=$(timeout 90 mount -t nfs -o ro,soft,timeo=50,retrans=2 "$source" "$d" 2>&1); then
+    echo "FAIL $name $source: the mount was refused: $err"; rmdir "$d" 2>/dev/null; return 1
+  fi
+  umount "$d" 2>/dev/null || umount -l "$d" 2>/dev/null; rmdir "$d" 2>/dev/null
+  echo "OK   $name $source: reachable and mountable (read-only test)"
+}
+rc=0
+command -v mount.nfs >/dev/null || { echo "ERROR: mount.nfs is missing on the OIM (install nfs-utils)"; exit 1; }
+"""
+
+
+def _nfs_mounts(layout: "Layout") -> List[Tuple[str, str]]:
+    """Return (name, source) of every NFS entry of the project's storage_config.yml."""
+    if not os.path.isfile(layout.storage_config):
+        return []
+    found: List[Tuple[str, str]] = []
+    current: Dict[str, str] = {}
+
+    def flush() -> None:
+        if current.get("fs_type", "").lower() == "nfs" and current.get("source"):
+            found.append((current.get("name", "?"), current["source"]))
+
+    with open(layout.storage_config, encoding="utf-8") as handle:
+        for raw in handle:
+            line = raw.split("#", 1)[0].rstrip()
+            match = re.match(r"^\s*-\s*name:\s*[\"']?([^\"'\s]+)[\"']?\s*$", line)
+            if match:
+                flush()
+                current = {"name": match.group(1)}
+                continue
+            match = re.match(r"^\s+(source|fs_type):\s*[\"']?([^\"']*)[\"']?\s*$", line)
+            if match:
+                current[match.group(1)] = match.group(2).strip()
+    flush()
+    return found
+
+
+def nfs_preflight() -> int:
+    """Check from the OIM that every NFS share of the storage config answers and mounts.
+
+    Reads the project's storage_config.yml (no Omnia venv is needed, so it works on the first
+    run). Every share is checked; a read-only mount test follows the port check. Fails the
+    stage with one line per share.
+    """
+    cluster = apply_cluster()
+    shares = _nfs_mounts(Layout(cluster))
+    if not shares:
+        _say("No NFS mount in the project's storage_config.yml: no share to check")
+        return 0
+    for name, source in shares:
+        match = NFS_SOURCE.fullmatch(source)
+        if not match or ".." in match.group(2).split("/") or not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", name):
+            _fail(f"the NFS source '{source}' of {name} in storage_config.yml is not host:/export "
+                  "of plain characters. HOW TO FIX: correct the mount")
+    _say("NFS check from the OIM: " + ", ".join(f"{n} {s}" for n, s in shares))
+    calls = "".join(f"check_one {shlex.quote(n)} {shlex.quote(s)} || rc=1\n" for n, s in shares)
+    return _run(NFS_CHECK.replace("@PORT@", str(NFS_PORT)) + calls + "exit $rc\n", "the NFS check")
+
+
+def _nfs_scenario(command: str, marker: str, what: str) -> int:
+    """Run the cleanup_nfs_shares tag of test/utils (nothing to do without an Omnia venv)."""
+    apply_cluster()
+    missing = f"echo 'No Omnia venv on the OIM, no NFS share to {what}'; exit 0"
+    return _fvt("utils", "cleanup_nfs_shares", command, f"--marker {marker}", missing)
 
 
 def cleanup_omnia() -> int:
-    """Empty the Slurm and K8s NFS shares, then omnia.sh --cleanup --all.
+    """Empty the Slurm and K8s NFS shares, then reset Omnia (omnia.sh --cleanup --all).
 
-    The shares go first because omnia.sh --cleanup --all removes the Omnia venv the NFS
-    scenario runs in. When the shares cannot be emptied the venv is kept, so the next run can
-    try again, and the stage fails.
+    Both go through run_validation: the shares with test/utils (cleanup_nfs_shares) in the Omnia
+    venv, then test/main (cleanup, cleanup_all: true) from its own venv, because the cleanup
+    removes the Omnia venv. The shares go first; when they cannot be emptied the Omnia venv is
+    kept, so the next run can try again, and the stage fails. The reports of the cleanup are
+    kept before /opt/omnia is removed.
     """
     apply_cluster()
     require_ready()
     path = install_path()
     rc = _nfs_scenario("test", "destructive", "empty")
+    _fetch_reports(f"{_env('CI_JOB_NAME')}__")
     if rc:
-        _say("ERROR: the NFS shares were not emptied, so omnia.sh --cleanup --all was not run "
+        _say("ERROR: the NFS shares were not emptied, so the Omnia cleanup was not run "
              "and the Omnia venv is kept for the next try")
         return rc
     return _run(f"""set -e
-cd {shlex.quote(path)}/src/main && chmod +x omnia.sh
-./omnia.sh --cleanup --all --skip-approval
-""", "omnia.sh --cleanup --all")
+cd {shlex.quote(path)}/test/main
+grep -q '^cleanup_all:' test_config.yml && sed -i -E 's/^cleanup_all:.*/cleanup_all: true/' test_config.yml || echo 'cleanup_all: true' >> test_config.yml
+chmod +x setup_env.sh run_validation.sh
+./setup_env.sh --venv
+env -u VIRTUAL_ENV ./run_validation.sh fvt_main cleanup test {_verbosity()}
+""", "fvt_main cleanup test (omnia.sh --cleanup --all)")
 
 
 def install() -> int:
@@ -474,22 +624,26 @@ def _refuse_symlinks(folder: str) -> None:
 
 def inputs() -> int:
     cluster = apply_cluster()
-    if _dry_run("copy clusters/<cluster>/inputs/<domain>/ of every domain to the OIM"):
+    if _dry_run("copy the input folder of every domain and the catalog to the OIM"):
         return 0
     data, project = _resolve_layout()
-    root = INPUTS_ROOT.format(cluster=cluster)
-    folders = [d for d in DOMAIN_STEPS if os.path.isdir(os.path.join(root, d))]
+    layout = Layout(cluster)
+    folders = [d for d in DOMAIN_STEPS if os.path.isdir(layout.domain_dir(d))]
     if not folders:
-        _fail(f"no domain folder under {root}/. HOW TO FIX: add clusters/{cluster}/inputs/<domain>/")
+        _fail(f"no domain input folder in the project. HOW TO FIX: add "
+              f"{layout.domain_dir('<domain>')}/")
     failed = []
     for domain in folders:
-        _refuse_symlinks(os.path.join(root, domain))
+        _refuse_symlinks(layout.domain_dir(domain))
     for domain in folders:
         destination = f"{data}/{domain}/input/{project}"
-        _say(f"Copy {root}/{domain}/ -> {destination}/")
-        if _push_folder(os.path.join(root, domain), destination):
+        _say(f"Copy {layout.domain_dir(domain)}/ -> {destination}/")
+        if _push_folder(layout.domain_dir(domain), destination):
             failed.append(domain)
-    catalog = CATALOG_FILE.format(cluster=cluster)
+            continue
+        protect = " ".join(shlex.quote(f"{destination}/{name}") for name in SENSITIVE_INPUTS)
+        remote(f"for f in {protect}; do [ -f \"$f\" ] && chmod 640 \"$f\"; done; true")
+    catalog = layout.catalog
     if os.path.isfile(catalog):
         with open(catalog, "rb") as handle:
             rc, _ = remote(f"mkdir -p {shlex.quote(data)}/catalog && "
@@ -630,23 +784,24 @@ def credentials(domain: str) -> int:
                 f"encrypt {name}")
 
 
-SAFE_EXTRA = re.compile(r"^(--marker [a-z_]{1,32})?$")
+SAFE_EXTRA = re.compile(r"^(--marker [a-z_]{1,32}|--full-playbook)?$")
 
 
 def _fvt(domain: str, tag: str, command: str, extra: str = "", missing: str = _NO_VENV) -> int:
     """Run ./run_validation.sh fvt_<domain> <tag> <command> [--marker <name>] in the Omnia venv."""
     apply_cluster()
     _domain(domain)
-    _tag(tag)
-    if not SAFE_EXTRA.match(extra):
+    if tag:
+        _tag(tag)
+    if not SAFE_EXTRA.match(extra) or (not tag and extra != "--full-playbook"):
         _fail(f"'{extra}' is not a --marker option of plain characters")
     path = install_path()
     return _run(f"""set -e
 {_activate(missing)}
 cd {shlex.quote(path)}/test/{domain}
-pip install -q -r requirements.txt
+{PIP_INSTALL}
 ./run_validation.sh fvt_{domain} {tag} {command} {extra} {_verbosity()}
-""", f"fvt_{domain} {tag} {command} {extra}".strip())
+""", f"fvt_{domain} {tag} {command} {extra}".replace("  ", " ").strip())
 
 
 def deploy(domain: str) -> int:
@@ -660,7 +815,10 @@ def deploy(domain: str) -> int:
     if rc:
         return rc
     tags = [t.strip() for t in _env(f"{domain.upper()}_TAGS").split(",") if t.strip()]
-    for tag in tags or DOMAIN_STEPS[domain]:
+    if not tags:
+        _say(f"===== {domain}: the complete playbook (no tags) =====")
+        return _fvt(domain, "", "exec", "--full-playbook")
+    for tag in tags:
         _say(f"===== {domain}: {tag} (exec) =====")
         rc = _fvt(domain, _tag(tag), "exec")
         if rc:
@@ -685,7 +843,7 @@ def verify_domain(domain: str) -> int:
     if _dry_run(f"copy the test config and run: {command}"):
         return 0
     target = f"{path}/test/{domain}"
-    source = os.path.join(INPUTS_ROOT.format(cluster=cluster), "test", domain)
+    source = Layout(cluster).test_dir(domain)
     for name in ("test_config.yml", "test_run_config.yml"):
         file_path = os.path.join(source, name)
         if os.path.isfile(file_path):
@@ -713,7 +871,7 @@ def verify_domain(domain: str) -> int:
     return _run(f"""set -e
 {_activate(_NO_VENV)}
 cd {shlex.quote(target)}
-pip install -q -r requirements.txt
+{PIP_INSTALL}
 export CI_PIPELINE_ID={shlex.quote(_env("CI_PIPELINE_ID", "0"))}
 {command}
 """, command)
@@ -733,26 +891,97 @@ def _statuses() -> List[Tuple[str, str, str]]:
     return list(found.values())
 
 
-def _api_jobs() -> List[Tuple[str, str, str]]:
-    """Return (job, status, page) of every job of this pipeline from the GitLab API.
+def _api_get(path: str, token: str, header: str, raw: bool = False) -> Any:
+    """GET a path of the GitLab API of this project (JSON, or the text with raw=True)."""
+    context = ssl.create_default_context(cafile=_env("CI_SERVER_TLS_CA_FILE") or None)
+    request = urllib.request.Request(  # nosec B310  # GitLab API of this project (https)
+        f"{_env('CI_API_V4_URL')}{path}", headers={header: token})
+    with urllib.request.urlopen(request, context=context, timeout=30) as response:  # nosec B310
+        data = response.read()
+    return data.decode(errors="replace") if raw else json.loads(data)
+
+
+def _api_job_details() -> List[Dict[str, Any]]:
+    """Return the jobs of this pipeline from the GitLab API, without the summary job.
 
     It lists the jobs GitLab skipped too (they leave no status file). Best effort: [] when the
     API is not reachable or the job token is refused.
     """
-    api, token = _env("CI_API_V4_URL"), os.environ.get("CI_JOB_TOKEN", "")
-    if not (api and token and _env("CI_PROJECT_ID") and _env("CI_PIPELINE_ID")):
+    token = os.environ.get("CI_JOB_TOKEN", "")
+    if not (_env("CI_API_V4_URL") and token and _env("CI_PROJECT_ID") and _env("CI_PIPELINE_ID")):
         return []
-    url = (f"{api}/projects/{_env('CI_PROJECT_ID')}/pipelines/{_env('CI_PIPELINE_ID')}/jobs"
-           "?per_page=100")
     try:
-        context = ssl.create_default_context(cafile=_env("CI_SERVER_TLS_CA_FILE") or None)
-        request = urllib.request.Request(url, headers={"JOB-TOKEN": token})  # nosec B310  # https API
-        with urllib.request.urlopen(request, context=context, timeout=20) as response:  # nosec B310
-            items = json.load(response)
-        return [(str(j["name"]), str(j["status"]), str(j.get("web_url", ""))) for j in items
-                if j.get("name") != "summary"]
-    except (OSError, ValueError, KeyError, TypeError):
+        items = _api_get(f"/projects/{_env('CI_PROJECT_ID')}/pipelines/{_env('CI_PIPELINE_ID')}"
+                         "/jobs?per_page=100", token, "JOB-TOKEN")
+        return [{"id": j.get("id"), "name": str(j["name"]), "status": str(j["status"]),
+                 "url": str(j.get("web_url", "")), "duration": j.get("duration"),
+                 "started_at": j.get("started_at"), "finished_at": j.get("finished_at"),
+                 "allow_failure": bool(j.get("allow_failure")),
+                 "runner": (j.get("runner") or {}).get("description", "")}
+                for j in items if j.get("name") != "summary"]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return []
+
+
+def _api_jobs() -> List[Tuple[str, str, str]]:
+    """Return (job, status, page) of every job of this pipeline from the GitLab API."""
+    return [(j["name"], j["status"], j["url"]) for j in _api_job_details()]
+
+
+def _job_logs(jobs: List[Dict[str, Any]]) -> Dict[str, str]:
+    """Return {job: its log}: from the GitLab API with PIPELINE_API_TOKEN, else as the job kept it."""
+    token = os.environ.get("PIPELINE_API_TOKEN", "")
+    logs: Dict[str, str] = {}
+    from_api = 0
+    for job in jobs:
+        text = ""
+        if token and job.get("id") and _env("CI_PROJECT_ID"):
+            try:
+                text = _api_get(f"/projects/{_env('CI_PROJECT_ID')}/jobs/{job['id']}/trace",
+                                token, "PRIVATE-TOKEN", raw=True)
+                from_api += bool(text)
+            except (OSError, ValueError):
+                text = ""
+        if not text:
+            try:
+                with open(f"{LOG_DIR}/{job['name']}.log", encoding="utf-8") as handle:
+                    text = handle.read()
+            except OSError:
+                text = ""
+        logs[job["name"]] = _redact(text)
+    _say(f"Stage logs for the report: {from_api} from the GitLab API, "
+         f"{sum(1 for t in logs.values() if t) - from_api} as the jobs kept them"
+         + ("" if token else " (PIPELINE_API_TOKEN is not set, so the GitLab runner lines are missing)"))
+    return logs
+
+
+def _build_html_report(jobs: List[Dict[str, Any]]) -> Optional[Tuple[str, bytes]]:
+    """Write pipeline_report/pipeline_<id>.html and return (name, content); None when it fails."""
+    pipeline_id = _env("CI_PIPELINE_ID", "0")
+    if not re.fullmatch(r"[0-9]{1,12}", pipeline_id):
+        return None
+    commit = ""
+    if os.path.isfile(COMMIT_FILE):
+        with open(COMMIT_FILE, encoding="utf-8") as handle:
+            commit = handle.read().strip()
+    info = {"cluster": _env("CLUSTER"), "mode": _env("PIPELINE_MODE"), "domains": _env("DOMAINS"),
+            "repo": _env("OMNIA_REPO"), "branch": _env("OMNIA_BRANCH"), "commit": commit,
+            "pipeline_url": _env("CI_PIPELINE_URL"), "pipeline_id": pipeline_id,
+            "user": _env("GITLAB_USER_LOGIN"), "trigger_time": _env("CI_PIPELINE_CREATED_AT"),
+            "generated": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())}
+    try:
+        from library.functions import report_func  # pylint: disable=import-outside-toplevel
+        order = [x for x in _env("PIPELINE_JOB_ORDER").split(",") if x]
+        page = report_func.build_report(info, jobs, _job_logs(jobs), _reasons(), order)
+    except (ImportError, OSError, ValueError, KeyError, TypeError) as exc:
+        _say(f"WARNING: the HTML report was not built: {type(exc).__name__}: {exc}")
+        return None
+    name = f"pipeline_{pipeline_id}_report.html"
+    os.makedirs(HTML_REPORT_DIR, exist_ok=True)
+    with open(f"{HTML_REPORT_DIR}/{name}", "w", encoding="utf-8") as handle:
+        handle.write(page)
+    _say(f"HTML report of the stages and their logs: {HTML_REPORT_DIR}/{name} ({len(page) // 1024} KB)")
+    return name, page.encode()
 
 
 def _reasons() -> Dict[str, str]:
@@ -767,8 +996,13 @@ def _reasons() -> Dict[str, str]:
     return found
 
 
-def _fetch_reports() -> List[Tuple[str, bytes]]:
-    """Copy the test reports written during this pipeline from the OIM to pipeline_reports/."""
+def _fetch_reports(prefix: str = "") -> List[Tuple[str, bytes]]:
+    """Copy the test reports written during this pipeline from the OIM to pipeline_reports/.
+
+    A cleanup stage keeps its reports under its own prefix, because the Omnia cleanup removes
+    /opt/omnia (and with it the reports). Without a prefix (the summary) the reports kept by
+    the earlier jobs are returned too.
+    """
     path = _env("TEST_REPORTS_PATH", "/opt/omnia/reports")
     since = _env("CI_PIPELINE_CREATED_AT")
     if _env("DRY_RUN").lower() == "true" or not SAFE_PATH.match(path):
@@ -784,11 +1018,18 @@ def _fetch_reports() -> List[Tuple[str, bytes]]:
             continue
         rc, content = remote(f"cat {shlex.quote(remote_path)}", capture=True)
         if rc == 0:
-            name = os.path.basename(remote_path)
+            name = prefix + os.path.basename(remote_path)
             with open(os.path.join(REPORT_DIR, name), "w", encoding="utf-8") as handle:
                 handle.write(content)
             reports.append((name, content.encode()))
     _say(f"{len(reports)} test report(s) fetched from the OIM")
+    if not prefix:
+        have = {name for name, _ in reports}
+        for name in sorted(os.listdir(REPORT_DIR)):
+            if name not in have and os.path.isfile(os.path.join(REPORT_DIR, name)):
+                with open(os.path.join(REPORT_DIR, name), "rb") as handle:
+                    reports.append((name, handle.read()))
+        _say(f"{len(reports)} test report(s) in all, with those kept by the earlier jobs")
     return reports
 
 
@@ -825,9 +1066,10 @@ def _send_summary_email(jobs: List[Tuple[str, str, str]], reports: List[Tuple[st
 def summary() -> int:
     """Print the status of every job, send the summary email, fail when a job failed."""
     apply_cluster()
+    details = _api_job_details()
     local = {name: (name, status, url) for name, status, url in _statuses()}
-    api = {name: (name, status, url or local.get(name, ("", "", ""))[2])
-           for name, status, url in _api_jobs()}
+    api = {j["name"]: (j["name"], j["status"], j["url"] or local.get(j["name"], ("", "", ""))[2])
+           for j in details}
     jobs = list(({**local, **api}).values())
     width = max([len(n) for n, _, _ in jobs] + [4])
     _say(f"Pipeline summary, cluster {_env('CLUSTER')}")
@@ -835,7 +1077,12 @@ def summary() -> int:
         _say(f"  {name:<{width}}  {status}")
     failed = [n for n, st, _ in jobs if st == "failed"]
     _say(f"{len(jobs)} jobs, {len(failed)} failed" + (f": {', '.join(failed)}" if failed else ""))
-    _send_summary_email(jobs, _fetch_reports())
+    attachments = _fetch_reports()
+    html_report = _build_html_report(details or [
+        {"id": None, "name": n, "status": st, "url": url} for n, st, url in jobs])
+    if html_report:
+        attachments.append(html_report)
+    _send_summary_email(jobs, attachments)
     blocking = [n for n in failed if not n.startswith("test_") and n not in TOLERATED_JOBS]
     if blocking:
         _say(f"The pipeline fails because of: {', '.join(blocking)}")
@@ -846,7 +1093,7 @@ def main(argv: List[str]) -> int:
     one = {"cleanup": cleanup, "credentials": credentials, "deploy": deploy,
            "verify": verify_domain}
     none = {"initialize": initialize, "init": init, "checkout": checkout,
-            "nfs-check": nfs_check, "cleanup-omnia": cleanup_omnia, "setup-main": setup_main,
+            "nfs-check": nfs_preflight, "cleanup-omnia": cleanup_omnia, "setup-main": setup_main,
             "install": install, "inputs": inputs, "summary": summary}
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
