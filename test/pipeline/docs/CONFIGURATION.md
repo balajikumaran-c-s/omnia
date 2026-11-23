@@ -345,7 +345,7 @@ python3 setup_gitlab_project.py --update-file \
     --token glpat-xxxx \
     --project-name omnia-pipeline \
     --file /path/to/omnia.env \
-    --repo-path clusters/cluster1/src/main/omnia.env
+    --repo-path clusters/cluster1/inputs/src/main/omnia.env
 ```
 
 ### Upload a local directory to the repo
@@ -356,7 +356,7 @@ python3 setup_gitlab_project.py --upload-dir \
     --token glpat-xxxx \
     --project-name omnia-pipeline \
     --dir /path/to/test_configs/ \
-    --repo-path clusters/cluster1/test/orchestrator/
+    --repo-path clusters/cluster1/inputs/test/orchestrator/
 ```
 
 ### List CI/CD variables

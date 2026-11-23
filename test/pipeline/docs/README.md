@@ -231,11 +231,11 @@ test/pipeline/
 └── clusters/
     ├── cluster1/
     │   ├── cluster.env              ← Connection details
-    │   ├── src/
-    │   │   ├── main/omnia.env       ← Omnia environment (and catalog_rhel.json)
-    │   │   └── <domain>/input/      ← Domain configs (repo_manager, image_build_manager,
-    │   │                              discovery, orchestrator, telemetry)
-    │   └── test/<domain>/           ← Test configs
+    │   └── inputs/
+    │       ├── src/main/omnia.env   ← Omnia environment (and catalog_rhel.json)
+    │       ├── src/<domain>/        ← Domain configs (repo_manager, image_build_manager,
+    │       │                          discovery, orchestrator, telemetry)
+    │       └── test/<domain>/       ← Test configs
     └── cluster2/
         └── ...
 ```

@@ -34,7 +34,7 @@ For every cluster, in this order:
    runs `omnia.sh --cleanup --all`. If any cleanup failed, nothing is installed and the pipeline
    ends red. If initialization fails, every other stage is skipped and only the summary runs.
 3. **Install** (`setup_main`, one stage): `omnia.sh -s` creates the Omnia venv and runs every
-   `domain-init`, then the inputs of every domain (`clusters/<cluster>/src/<domain>/input/`) and the
+   `domain-init`, then the inputs of every domain (`clusters/<cluster>/inputs/src/<domain>/`) and the
    catalog are copied to `<data>/<domain>/input/<project>/` on the OIM. `fvt_main verify` tests the
    install in the next stage.
 4. **Domains**: repo_manager, image_build_manager, discovery (optional), orchestrator and
@@ -81,18 +81,19 @@ After `setup_gitlab_project.py --create`, the GitLab project holds:
 
 ```
 .gitlab-ci*.yml, send_email.py, pipeline_config.yml     (no helper code: it comes from the clone)
-clusters/<cluster>/
-  src/                         The layout of the Omnia checkout
+clusters/<cluster>/inputs/
+  src/
     main/omnia.env             Omnia environment of the OIM
     main/catalog_rhel.json     Optional catalog
-    <domain>/input/            The input files of repo_manager, image_build_manager, discovery,
+    <domain>/                  The input files of repo_manager, image_build_manager, discovery,
                                orchestrator, telemetry (build_stream and utils for their pipelines)
   test/<domain>/               Optional test_config.yml and test_run_config.yml
 ```
 
-A project made before this layout keeps `clusters/<cluster>/inputs/<domain>/`, `inputs/omnia.env`,
-`catalogs/` and `inputs/test/<domain>/`; the cluster pipeline reads either one (`src/` wins when it
-exists). The build stream and utils pipelines read the `src/` and `test/` layout only.
+A project made before this layout keeps `inputs/<domain>/`, `inputs/omnia.env` and
+`catalogs/catalog_rhel.json` (`inputs/test/<domain>/` is the same); the cluster pipeline reads either
+one (`inputs/src/` wins when it exists). The build stream and utils pipelines read the
+`inputs/src` and `inputs/test` layout only.
 
 ---
 
@@ -128,7 +129,7 @@ exists). The build stream and utils pipelines read the `src/` and `test/` layout
 4. Add the OIM password as the masked variable `<CLUSTER>_TARGET_PASS`
    (for example `CLUSTER1_TARGET_PASS`) in the project's CI/CD settings. It is never stored in
    `pipeline_config.yml`.
-5. Edit the inputs in the project under `clusters/<cluster>/src/` (and the test settings under `clusters/<cluster>/test/`).
+5. Edit the inputs in the project under `clusters/<cluster>/inputs/src/` (and the test settings under `clusters/<cluster>/inputs/test/`).
 6. First run with `DRY_RUN=true` (`dry_run: "true"` in the config): every job prints what it
    would do on the OIM and changes nothing. Then run it for real: **CI/CD > Pipelines > Run
    pipeline**.

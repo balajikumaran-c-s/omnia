@@ -56,7 +56,7 @@ Usage:
     --token glpat-xxxx \\
     --project-name omnia-pipeline \\
     --file /path/to/omnia.env \\
-    --repo-path clusters/cluster1/src/main/omnia.env \\
+    --repo-path clusters/cluster1/inputs/src/main/omnia.env \\
     --commit-message "Update omnia.env for cluster1"
 
   # Upload a local directory (recursive) to the repo
@@ -65,7 +65,7 @@ Usage:
     --token glpat-xxxx \\
     --project-name omnia-pipeline \\
     --dir /path/to/local/test_configs/ \\
-    --repo-path clusters/cluster1/test/orchestrator/
+    --repo-path clusters/cluster1/inputs/test/orchestrator/
 
   # List CI/CD variables (names only)
   python3 setup_gitlab_project.py --list-vars \\
@@ -638,11 +638,11 @@ class GitLabClient:
 # File sourcing - collect files from omnia src/ tree
 # ---------------------------------------------------------------------------
 # Domain input files source mapping:
-#   src/repo_manager/input/        -> clusters/<name>/src/repo_manager/input/
-#   src/image_build_manager/input/  -> clusters/<name>/src/image_build_manager/input/
-#   src/orchestrator/input/         -> clusters/<name>/src/orchestrator/input/
-#   src/main/samples/catalog_rhel.json -> clusters/<name>/src/main/catalog_rhel.json
-#   src/main/omnia.env              -> clusters/<name>/src/main/omnia.env
+#   src/repo_manager/input/        -> clusters/<name>/inputs/src/repo_manager/
+#   src/image_build_manager/input/  -> clusters/<name>/inputs/src/image_build_manager/
+#   src/orchestrator/input/         -> clusters/<name>/inputs/src/orchestrator/
+#   src/main/samples/catalog_rhel.json -> clusters/<name>/inputs/src/main/catalog_rhel.json
+#   src/main/omnia.env              -> clusters/<name>/inputs/src/main/omnia.env
 
 DOMAIN_INPUT_MAP = {
     "repo_manager": "src/repo_manager/input",
@@ -656,7 +656,7 @@ DOMAIN_INPUT_MAP = {
 # Test configuration files per domain.
 # Maps domain -> (test_dir_in_repo, list_of_config_files_to_collect)
 # These template files are sourced from test/<test_dir>/ and committed
-# to clusters/<cluster>/test/<domain>/ in the GitLab repo.
+# to clusters/<cluster>/inputs/test/<domain>/ in the GitLab repo.
 DOMAIN_TEST_MAP = {
     "main": {
         "src_dir": "test/main",
@@ -724,7 +724,7 @@ def collect_input_files(omnia_root, cluster_names):
             if src_dir.is_dir():
                 for f in sorted(src_dir.iterdir()):
                     if f.is_file():
-                        repo_path = f"clusters/{cluster}/src/{domain}/input/{f.name}"
+                        repo_path = f"clusters/{cluster}/inputs/src/{domain}/{f.name}"
                         files.append((str(f), repo_path))
 
         # Catalog files (all files from src/main/samples/)
@@ -732,12 +732,12 @@ def collect_input_files(omnia_root, cluster_names):
         if samples_dir.is_dir():
             for f in sorted(samples_dir.iterdir()):
                 if f.is_file():
-                    files.append((str(f), f"clusters/{cluster}/src/main/{f.name}"))
+                    files.append((str(f), f"clusters/{cluster}/inputs/src/main/{f.name}"))
 
         # omnia.env template
         omnia_env = omnia_root / "src" / "main" / "omnia.env"
         if omnia_env.exists():
-            files.append((str(omnia_env), f"clusters/{cluster}/src/main/omnia.env"))
+            files.append((str(omnia_env), f"clusters/{cluster}/inputs/src/main/omnia.env"))
 
     return files
 
@@ -750,7 +750,7 @@ def collect_test_files(omnia_root, cluster_names):
     NOTE: test_creds.yml is excluded — it is set as a CI/CD File Variable.
 
     Returns a list of (local_path, repo_path) tuples.
-    Files are placed at: clusters/<cluster>/test/<domain>/<file>
+    Files are placed at: clusters/<cluster>/inputs/test/<domain>/<file>
     """
     files = []
     omnia_root = Path(omnia_root)
@@ -763,7 +763,7 @@ def collect_test_files(omnia_root, cluster_names):
             for fname in info["files"]:
                 src_file = src_dir / fname
                 if src_file.exists():
-                    repo_path = f"clusters/{cluster}/test/{domain}/{fname}"
+                    repo_path = f"clusters/{cluster}/inputs/test/{domain}/{fname}"
                     files.append((str(src_file), repo_path))
 
     return files
@@ -1310,7 +1310,7 @@ def cmd_create(args, client):
         print(f"     Variables: {', '.join(c.upper() + '_TARGET_PASS' for c in cluster_names)}")
         print(f"  2. Set BAO_SERVER_URL in GitLab CI/CD variables (required for domain credentials)")
         print(f"     Domain credentials are fetched from OpenBao at BAO_DATA_PATH/<domain>")
-    print(f"  {'3' if not config_vars else '1'}. Edit cluster-specific input files in the GitLab repo (clusters/<name>/src/ and clusters/<name>/test/)")
+    print(f"  {'3' if not config_vars else '1'}. Edit cluster-specific input files in the GitLab repo (clusters/<name>/inputs/src/ and clusters/<name>/inputs/test/)")
     print(f"  {'4' if not config_vars else '2'}. Trigger pipeline: CI/CD > Pipelines > Run pipeline")
     return True
 
@@ -2016,13 +2016,13 @@ def main():
         elif args.upload_dir:
             if not args.dir:
                 print("ERROR: --dir is required with --upload-dir")
-                print("  Example: --upload-dir --dir /path/to/local/dir --repo-path clusters/cluster1/src/telemetry/input/")
+                print("  Example: --upload-dir --dir /path/to/local/dir --repo-path clusters/cluster1/inputs/src/telemetry/")
                 sys.exit(1)
             success = cmd_upload_dir(args, client)
         elif args.delete_dir:
             if not args.repo_path:
                 print("ERROR: --repo-path is required with --delete-dir")
-                print("  Example: --delete-dir --repo-path clusters/cluster1/test/orchestrator")
+                print("  Example: --delete-dir --repo-path clusters/cluster1/inputs/test/orchestrator")
                 sys.exit(1)
             success = cmd_delete_dir(args, client)
         elif args.validate:

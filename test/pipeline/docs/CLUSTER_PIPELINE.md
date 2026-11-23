@@ -90,7 +90,7 @@ exist before the clone. All of them need the cluster variables
 | Command | What it does |
 |---|---|
 | `initialize` | The whole initialization stage: `init`, `checkout` and, in `default` and `cleanup` mode with `DOMAINS=default`, `nfs-check`. Leaves the `initialization` marker only when all of them passed |
-| `init` | Checks `CLUSTER`, the cluster variables, `OMNIA_REPO` and `OMNIA_BRANCH`, `OMNIA_INSTALL_PATH`, the host key policy, `clusters/<cluster>/src/main/omnia.env` and the SSH connection (retried) |
+| `init` | Checks `CLUSTER`, the cluster variables, `OMNIA_REPO` and `OMNIA_BRANCH`, `OMNIA_INSTALL_PATH`, the host key policy, `clusters/<cluster>/inputs/src/main/omnia.env` and the SSH connection (retried) |
 | `checkout` | Records the commit of the clone (`actual_commit_sha.txt`) and copies `omnia.env` into it |
 | `nfs-check` | `fvt_utils cleanup_nfs_shares verify --marker sanity`: every Slurm and K8s share of the OIM's `storage_config.yml` mounts read-only |
 | `cleanup <domain>` | Checks the marker, then `fvt_<domain> cleanup test` (exec, then verify) in the Omnia venv; utils: `fvt_utils cleanup test --marker cleanup` |
@@ -131,12 +131,13 @@ then copied from that checkout into `ci_tools/` for the later jobs.
 
 The inputs are copied by the `setup_main` stage after `omnia.sh -s` (in `default` and `deploy` mode),
 which has created the domain folders and their default inputs. For every deploy domain (repo_manager, image_build_manager, discovery, orchestrator,
-telemetry) that has a folder `clusters/<cluster>/src/<domain>/input/` in the
+telemetry) that has a folder `clusters/<cluster>/inputs/src/<domain>/` in the
 project, its content is copied to `<OMNIA_DATA_PATH>/<domain>/input/<OMNIA_PROJECT_NAME>/` on the
-OIM (both resolved from the Omnia venv). The catalog `clusters/<cluster>/src/main/catalog_rhel.json`
+OIM (both resolved from the Omnia venv). The catalog `clusters/<cluster>/inputs/src/main/catalog_rhel.json`
 is copied to `<data>/catalog/` when present. The stage fails if no domain folder exists or a copy
-fails. The project layout is `clusters/<cluster>/src/<domain>/input/`, `src/main/` (omnia.env and
-catalog) and `test/<domain>/`; a project with the older `inputs/` layout is still read (`src/` wins).
+fails. The project layout is `clusters/<cluster>/inputs/src/<domain>/`, `inputs/src/main/` (omnia.env and
+catalog) and `inputs/test/<domain>/`; a project with the older `inputs/<domain>/` layout is still read
+(`inputs/src/` wins).
 `pxe_mapping_file.csv` is given mode 640, which the orchestrator validation requires.
 
 ---
@@ -173,7 +174,7 @@ is generated if missing). File names: `repo_manager_config_credentials.yml`,
 stage fails. Only the number of fields is printed.
 
 **Test stages.** `verify <domain>` copies `test_config.yml` and `test_run_config.yml` from
-`clusters/<cluster>/test/<domain>/` (defaults of the checkout when absent), the test
+`clusters/<cluster>/inputs/test/<domain>/` (defaults of the checkout when absent), the test
 credentials (the File variable `<CLUSTER>_TEST_CREDS`, and for orchestrator and telemetry the
 OpenBao secret `test_<domain>`, which wins), encrypts them, then runs the command. The command is
 `TEST_<DOMAIN>_CMD`, default `./run_validation.sh fvt_<domain> verify`; it must start with
@@ -185,7 +186,7 @@ OpenBao secret `test_<domain>`, which wins), encrypts them, then runs the comman
 
 When the orchestrator is selected the initialization stage checks the NFS shares before anything
 is cleaned. It reads the NFS entries (`fs_type: nfs`) of the project's
-`clusters/<cluster>/src/orchestrator/input/storage_config.yml`, so it works on the first run, before
+`clusters/<cluster>/inputs/src/orchestrator/storage_config.yml`, so it works on the first run, before
 Omnia is installed. From the OIM, for every share: the NFS server answers on port 2049, then the
 export is mounted read-only on a temporary folder and unmounted. Every share is checked and one
 line is printed per share (`OK` or `FAIL` with the reason: no answer, mount refused, `nfs-utils`

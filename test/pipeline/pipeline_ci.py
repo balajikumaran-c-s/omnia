@@ -115,31 +115,32 @@ ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 class Layout:
-    """Where the files of a cluster are in the project.
+    """Where the files of a cluster are in the project, under clusters/<cluster>/inputs/.
 
-    New layout (mirrors the Omnia checkout): clusters/<cluster>/src/<domain>/input/,
-    src/main/omnia.env, src/main/catalog_rhel.json and test/<domain>/. Older projects keep
-    clusters/<cluster>/inputs/<domain>/, inputs/omnia.env, catalogs/ and inputs/test/<domain>/.
+    New layout: inputs/src/<domain>/ (the input files of a domain), inputs/src/main/omnia.env,
+    inputs/src/main/catalog_rhel.json and inputs/test/<domain>/. Older projects keep
+    inputs/<domain>/, inputs/omnia.env and catalogs/catalog_rhel.json (inputs/test is the same).
     """
 
     def __init__(self, cluster: str):
-        self.root = f"clusters/{cluster}"
+        self.cluster_root = f"clusters/{cluster}"
+        self.root = f"{self.cluster_root}/inputs"
         self.new = os.path.isdir(f"{self.root}/src")
 
     def domain_dir(self, domain: str) -> str:
-        return f"{self.root}/src/{domain}/input" if self.new else f"{self.root}/inputs/{domain}"
+        return f"{self.root}/src/{domain}" if self.new else f"{self.root}/{domain}"
 
     def test_dir(self, domain: str) -> str:
-        return f"{self.root}/test/{domain}" if self.new else f"{self.root}/inputs/test/{domain}"
+        return f"{self.root}/test/{domain}"
 
     @property
     def env_file(self) -> str:
-        return f"{self.root}/src/main/omnia.env" if self.new else f"{self.root}/inputs/omnia.env"
+        return f"{self.root}/src/main/omnia.env" if self.new else f"{self.root}/omnia.env"
 
     @property
     def catalog(self) -> str:
         return (f"{self.root}/src/main/catalog_rhel.json" if self.new
-                else f"{self.root}/catalogs/catalog_rhel.json")
+                else f"{self.cluster_root}/catalogs/catalog_rhel.json")
 
     @property
     def storage_config(self) -> str:
@@ -147,12 +148,7 @@ class Layout:
 
     @property
     def name(self) -> str:
-        return "src/ and test/" if self.new else "inputs/ (older layout)"
-ACTIVATE = """DATA=$(grep '^OMNIA_DATA_PATH=' {install}/src/main/omnia.env 2>/dev/null | cut -d= -f2)
-DATA="${{DATA:-/opt/omnia}}"; DATA="${{DATA%/}}"
-if [ ! -f "$DATA/activate-omnia.sh" ]; then {missing}; fi
-source "$DATA/activate-omnia.sh"
-"""
+        return "inputs/src and inputs/test" if self.new else "inputs/<domain> (older layout)"
 
 
 def _env(name: str, default: str = "") -> str:

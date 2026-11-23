@@ -84,14 +84,14 @@ Go to your GitLab project > **Settings** > **CI/CD** > **Variables** and add:
 
 ## Step 5: Edit Input Files
 
-In your GitLab repository, navigate to `clusters/cluster1/src/` and edit:
+In your GitLab repository, navigate to `clusters/cluster1/inputs/src/` and edit:
 
 - **`main/omnia.env`** — Omnia environment settings
-- **`repo_manager/input/`** — Pulp repository configuration
-- **`orchestrator/input/`** — Kubernetes configuration
-- **`image_build_manager/input/`** — Image builder settings
-- **`discovery/input/`** — Discovery configuration
-- **`telemetry/input/`** — Monitoring configuration
+- **`repo_manager/`** — Pulp repository configuration
+- **`orchestrator/`** — Kubernetes configuration
+- **`image_build_manager/`** — Image builder settings
+- **`discovery/`** — Discovery configuration
+- **`telemetry/`** — Monitoring configuration
 
 ---
 

@@ -51,9 +51,9 @@
 #   NOTE: discovery credentials are not fetched in build_stream pipeline
 #
 # Repository layout:
-#   clusters/<name>/src/main/omnia.env      -> Omnia environment config
-#   clusters/<name>/src/<domain>/input/      -> Domain input files
-#   clusters/<name>/src/main/             -> Catalog files (optional)
+#   clusters/<name>/inputs/src/main/omnia.env      -> Omnia environment config
+#   clusters/<name>/inputs/src/<domain>/      -> Domain input files
+#   clusters/<name>/inputs/src/main/             -> Catalog files (optional)
 #
 # Cluster connection details come from CI/CD variables:
 #   <CLUSTER_PREFIX>_TARGET_IP, <CLUSTER_PREFIX>_TARGET_USER,
@@ -171,9 +171,9 @@ default:
           git checkout "origin/$CI_COMMIT_REF_NAME" -- clusters/ 2>/dev/null || true
 
         # Re-copy cluster-specific omnia.env to the cloned omnia repo
-        if [ -f "$CI_PROJECT_DIR/clusters/$CLUSTER/src/main/omnia.env" ]; then
+        if [ -f "$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/main/omnia.env" ]; then
           echo "Syncing cluster-specific omnia.env to target server"
-          $SCP_CMD $CI_PROJECT_DIR/clusters/$CLUSTER/src/main/omnia.env \
+          $SCP_CMD $CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/main/omnia.env \
             $TARGET:$OMNIA_INSTALL_PATH/src/main/omnia.env 2>/dev/null || true
         fi
 
@@ -329,10 +329,10 @@ initialization:
     # Validate input files
     - echo "Validating input files"
     - |
-      if [ -f "clusters/$CLUSTER/src/main/omnia.env" ]; then
-        echo "  Found clusters/$CLUSTER/src/main/omnia.env"
+      if [ -f "clusters/$CLUSTER/inputs/src/main/omnia.env" ]; then
+        echo "  Found clusters/$CLUSTER/inputs/src/main/omnia.env"
       else
-        echo "  WARNING: clusters/$CLUSTER/src/main/omnia.env not found"
+        echo "  WARNING: clusters/$CLUSTER/inputs/src/main/omnia.env not found"
         echo "  Will use default omnia.env from cloned repo"
       fi
 
@@ -463,7 +463,7 @@ setup_environment:
     # Step 5: Copy cluster-specific omnia.env to the cloned repo (if it exists)
     - echo "Step 5 - Copying cluster-specific omnia.env to target omnia repo"
     - |
-      OMNIA_ENV_PATH="$CI_PROJECT_DIR/clusters/$CLUSTER/src/main/omnia.env"
+      OMNIA_ENV_PATH="$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/main/omnia.env"
       if [ -f "$OMNIA_ENV_PATH" ]; then
         $SCP_CMD "$OMNIA_ENV_PATH" $TARGET:$OMNIA_INSTALL_PATH/src/main/omnia.env
         echo "  Verifying omnia.env on target"
@@ -514,7 +514,7 @@ setup_environment:
         # Create catalog directory on target
         $SSH_CMD $TARGET "mkdir -p $OMNIA_DATA_PATH/catalog"
         # Copy catalog file if it exists in the pipeline
-        CATALOG_PATH="$CI_PROJECT_DIR/clusters/$CLUSTER/src/main/catalog_rhel.json"
+        CATALOG_PATH="$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/main/catalog_rhel.json"
         echo "  Looking for catalog at: $CATALOG_PATH"
         if [ -f "$CATALOG_PATH" ]; then
           echo "  Found catalog file, copying..."
@@ -530,7 +530,7 @@ setup_environment:
         else
           echo "  WARNING: No catalog file found at $CATALOG_PATH"
           echo "  Available files:"
-          ls -la "$CI_PROJECT_DIR/clusters/$CLUSTER/src/main/" || echo "  catalogs directory not found"
+          ls -la "$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/main/" || echo "  catalogs directory not found"
         fi
       else
         echo "Step 8 - Skipping catalog copy (cleanup mode)"
@@ -1067,7 +1067,7 @@ setup_main:
     # Step 1: Re-copy omnia.env to the cloned repo (if available)
     - echo "Step 1 - Re-copying omnia.env to target"
     - |
-      OMNIA_ENV_PATH="$CI_PROJECT_DIR/clusters/$CLUSTER/src/main/omnia.env"
+      OMNIA_ENV_PATH="$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/main/omnia.env"
       if [ -f "$OMNIA_ENV_PATH" ]; then
         $SCP_CMD "$OMNIA_ENV_PATH" $TARGET:$OMNIA_INSTALL_PATH/src/main/omnia.env
         echo "  omnia.env copied to target"
@@ -1108,7 +1108,7 @@ setup_main:
       OMNIA_DATA_PATH="${OMNIA_DATA_PATH:-/opt/omnia}"
       OMNIA_DATA_PATH="${OMNIA_DATA_PATH%/}"
       OMNIA_DATA_PATH="${OMNIA_DATA_PATH%/}"
-      CATALOG_PATH="$CI_PROJECT_DIR/clusters/$CLUSTER/src/main/catalog_rhel.json"
+      CATALOG_PATH="$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/main/catalog_rhel.json"
       if [ -f "$CATALOG_PATH" ]; then
         $SSH_CMD $TARGET "mkdir -p $OMNIA_DATA_PATH/catalog"
         # Remove old catalog file first to ensure fresh copy
@@ -1191,7 +1191,7 @@ test_main_installation:
     # Step 1: Copy test configuration files from pipeline to target
     - echo "Step 1 - Copying test configuration files to target"
     - |
-      TEST_SRC="$CI_PROJECT_DIR/clusters/$CLUSTER/test/main"
+      TEST_SRC="$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/test/main"
       TEST_DST="$OMNIA_INSTALL_PATH/test/main"
       for f in test_config.yml test_run_config.yml; do
         if [ -f "$TEST_SRC/$f" ]; then
@@ -1308,34 +1308,34 @@ prepare_base:
       # Copy repo_manager input files
       REPO_INPUT_DIR="$OMNIA_DATA_PATH/repo_manager/input/$OMNIA_PROJECT_NAME"
       $SSH_CMD $TARGET "mkdir -p $REPO_INPUT_DIR"
-      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/src/repo_manager/input" ]; then
-        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/src/repo_manager/input/. $TARGET:$REPO_INPUT_DIR/
+      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/repo_manager" ]; then
+        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/repo_manager/. $TARGET:$REPO_INPUT_DIR/
         echo "  Copied repo_manager input files to $REPO_INPUT_DIR/"
         $SSH_CMD $TARGET "ls -la $REPO_INPUT_DIR/"
       else
-        echo "WARNING: clusters/$CLUSTER/src/repo_manager/input/ not found"
+        echo "WARNING: clusters/$CLUSTER/inputs/src/repo_manager/ not found"
       fi
 
       # Copy image_build_manager input files
       IMAGE_INPUT_DIR="$OMNIA_DATA_PATH/image_build_manager/input/$OMNIA_PROJECT_NAME"
       $SSH_CMD $TARGET "mkdir -p $IMAGE_INPUT_DIR"
-      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/src/image_build_manager/input" ]; then
-        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/src/image_build_manager/input/. $TARGET:$IMAGE_INPUT_DIR/
+      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/image_build_manager" ]; then
+        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/image_build_manager/. $TARGET:$IMAGE_INPUT_DIR/
         echo "  Copied image_build_manager input files to $IMAGE_INPUT_DIR/"
         $SSH_CMD $TARGET "ls -la $IMAGE_INPUT_DIR/"
       else
-        echo "WARNING: clusters/$CLUSTER/src/image_build_manager/input/ not found"
+        echo "WARNING: clusters/$CLUSTER/inputs/src/image_build_manager/ not found"
       fi
 
       # Copy orchestrator input files
       ORCH_INPUT_DIR="$OMNIA_DATA_PATH/orchestrator/input/$OMNIA_PROJECT_NAME"
       $SSH_CMD $TARGET "mkdir -p $ORCH_INPUT_DIR"
-      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/src/orchestrator/input" ]; then
-        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/src/orchestrator/input/. $TARGET:$ORCH_INPUT_DIR/
+      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/orchestrator" ]; then
+        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/orchestrator/. $TARGET:$ORCH_INPUT_DIR/
         echo "  Copied orchestrator input files to $ORCH_INPUT_DIR/"
         $SSH_CMD $TARGET "ls -la $ORCH_INPUT_DIR/"
       else
-        echo "WARNING: clusters/$CLUSTER/src/orchestrator/input/ not found"
+        echo "WARNING: clusters/$CLUSTER/inputs/src/orchestrator/ not found"
       fi
 
     # Step 3: Fetch credential files from OpenBao for all three domains
@@ -1486,7 +1486,7 @@ test_repo_manager:
     # Step 1: Copy test configuration files to target
     - echo "Step 1 - Copying repo_manager test config to target"
     - |
-      TEST_SRC="$CI_PROJECT_DIR/clusters/$CLUSTER/test/repo_manager"
+      TEST_SRC="$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/test/repo_manager"
       TEST_DST="$OMNIA_INSTALL_PATH/test/repo_manager"
       for f in test_config.yml test_run_config.yml; do
         if [ -f "$TEST_SRC/$f" ]; then
@@ -1580,7 +1580,7 @@ test_image_build_manager:
     # Step 1: Copy test configuration files to target
     - echo "Step 1 - Copying image_build_manager test config to target"
     - |
-      TEST_SRC="$CI_PROJECT_DIR/clusters/$CLUSTER/test/image_build_manager"
+      TEST_SRC="$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/test/image_build_manager"
       TEST_DST="$OMNIA_INSTALL_PATH/test/image_build_manager"
       for f in test_config.yml test_run_config.yml; do
         if [ -f "$TEST_SRC/$f" ]; then
@@ -1674,7 +1674,7 @@ test_orchestrator:
     # Step 1: Copy test configuration files to target
     - echo "Step 1 - Copying orchestrator test config to target"
     - |
-      TEST_SRC="$CI_PROJECT_DIR/clusters/$CLUSTER/test/orchestrator"
+      TEST_SRC="$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/test/orchestrator"
       TEST_DST="$OMNIA_INSTALL_PATH/test/orchestrator"
       for f in test_config.yml test_run_config.yml; do
         if [ -f "$TEST_SRC/$f" ]; then
@@ -1810,12 +1810,12 @@ build_stream:
     - echo "Step 2 - Copying build_stream input files to target"
     - |
       $SSH_CMD $TARGET "mkdir -p $INPUT_DIR"
-      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/src/build_stream/input" ]; then
-        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/src/build_stream/input/. $TARGET:$INPUT_DIR/
+      if [ -d "$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/build_stream" ]; then
+        $SCP_CMD -r $CI_PROJECT_DIR/clusters/$CLUSTER/inputs/src/build_stream/. $TARGET:$INPUT_DIR/
         echo "  Copied build_stream input files to $INPUT_DIR/"
         $SSH_CMD $TARGET "ls -la $INPUT_DIR/"
       else
-        echo "ERROR: clusters/$CLUSTER/src/build_stream/input/ not found"
+        echo "ERROR: clusters/$CLUSTER/inputs/src/build_stream/ not found"
         exit 1
       fi
 
@@ -1911,7 +1911,7 @@ test_build_stream:
     # Step 1: Copy test configuration files to target
     - echo "Step 1 - Copying build_stream test config to target"
     - |
-      TEST_SRC="$CI_PROJECT_DIR/clusters/$CLUSTER/test/build_stream"
+      TEST_SRC="$CI_PROJECT_DIR/clusters/$CLUSTER/inputs/test/build_stream"
       TEST_DST="$OMNIA_INSTALL_PATH/test/build_stream"
       for f in test_config.yml test_run_config.yml; do
         if [ -f "$TEST_SRC/$f" ]; then
@@ -2183,7 +2183,7 @@ summary:
       report_paths = {}
       report_names = {}
       for domain in domains:
-        config_path = f"clusters/{cluster}/test/{domain}/test_config.yml"
+        config_path = f"clusters/{cluster}/inputs/test/{domain}/test_config.yml"
         try:
           with open(config_path, encoding="utf-8") as f:
             cfg = yaml.safe_load(f)

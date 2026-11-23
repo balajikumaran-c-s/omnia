@@ -121,10 +121,10 @@
 #   .gitlab-ci-cluster.yml                      -> Child pipeline (per-cluster deployment)
 #   .gitlab-ci-utils.yml                        -> Child pipeline (per-cluster log collection)
 #   clusters/<name>/cluster.env                 -> Per-cluster connection details
-#   clusters/<name>/src/main/omnia.env            -> Per-cluster Omnia environment config
-#   clusters/<name>/src/utils/input/               -> Per-cluster utils input files
-#   clusters/<name>/test/utils/          -> Per-cluster utils test files
-#   clusters/<name>/src/main/                   -> Per-cluster catalog files (optional)
+#   clusters/<name>/inputs/src/main/omnia.env            -> Per-cluster Omnia environment config
+#   clusters/<name>/inputs/src/utils/               -> Per-cluster utils input files
+#   clusters/<name>/inputs/test/utils/          -> Per-cluster utils test files
+#   clusters/<name>/inputs/src/main/                   -> Per-cluster catalog files (optional)
 #
 # To add a new cluster:
 #   Use setup_gitlab_project.py --update --clusters cluster1,cluster2,cluster3
