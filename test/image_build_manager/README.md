@@ -210,9 +210,9 @@ names run their complete pytest suite; use `test` as the conventional form.
 
 For FVT with no tag, `verify` runs verification for precheck, validate,
 prepare, and build (excluding both cleanup flows). No-tag `exec` runs the
-playbook's default full-stack flow, and no-tag `test` runs that deployment
-followed by the same non-cleanup verification set. Verification is grouped in
-the lifecycle order `precheck` → `validate` → `prepare` → `build`; each phase
+complete playbook (`fvt/test_playbook.py`), and no-tag `test` runs that
+playbook followed by the same non-cleanup verification set. Verification is
+grouped in the order `precheck` → `validate` → `prepare` → `build`; each phase
 is grouped by its documented suites, and each suite then follows its existing
 `@pytest.mark.order(n)` values.
 
@@ -234,6 +234,7 @@ ARM-host readiness and tooling checks before artifact and package validation.
 
 `./run_validation.sh fvt_image_build_manager exec` (no tag) runs the complete playbook once, from `fvt/test_playbook.py`.
 `./run_validation.sh fvt_image_build_manager <tag> exec` runs only that tag (`--tags <tag>`, from `fvt/<tag>/test_playbook.py`).
+`./run_validation.sh fvt_image_build_manager test` (no tag) runs the complete playbook, then verifies every suite of every tag (cleanup and the other explicit-only tags are left out); `./run_validation.sh fvt_image_build_manager verify` (no tag) runs that verification alone. `./run_validation.sh fvt_image_build_manager <tag> test` runs that tag's playbook, then the tests of that tag.
 
 #### Build-type naming convention (within `build` tag)
 

@@ -219,8 +219,9 @@ operations and includes destructive prepare, provision, and cleanup cases.
 
 `./run_validation.sh fvt_orchestrator exec` (no tag) runs the complete playbook once, from `fvt/test_playbook.py`.
 `./run_validation.sh fvt_orchestrator <tag> exec` runs only that tag (`--tags <tag>`, from `fvt/<tag>/test_playbook.py`).
+`./run_validation.sh fvt_orchestrator test` (no tag) runs the complete playbook, then verifies every suite of every tag (cleanup and the other explicit-only tags are left out); `./run_validation.sh fvt_orchestrator verify` (no tag) runs that verification alone. `./run_validation.sh fvt_orchestrator <tag> test` runs that tag's playbook, then the tests of that tag.
 
-An untagged FVT flow uses `precheck -> prepare -> provision -> pxeboot`.
+An untagged `test` runs the complete playbook, then verifies `precheck -> prepare -> provision -> pxeboot`.
 Cleanup is always explicit. Reboot cases never run without `--marker reboot`,
 and node remove/add cases never run without `--marker node_lifecycle`.
 

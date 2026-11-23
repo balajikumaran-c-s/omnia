@@ -90,6 +90,7 @@ Run from inside the `test/telemetry/` directory:
 
 `./run_validation.sh fvt_telemetry exec` (no tag) runs the complete playbook once, from `fvt/test_playbook.py`.
 `./run_validation.sh fvt_telemetry <tag> exec` runs only that tag (`--tags <tag>`, from `fvt/<tag>/test_playbook.py`).
+`./run_validation.sh fvt_telemetry test` (no tag) runs the complete playbook, then verifies every suite of every tag (cleanup and the other explicit-only tags are left out); `./run_validation.sh fvt_telemetry verify` (no tag) runs that verification alone. `./run_validation.sh fvt_telemetry <tag> test` runs that tag's playbook, then the tests of that tag.
 
 ### NFT Tags
 

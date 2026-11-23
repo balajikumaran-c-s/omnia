@@ -83,6 +83,7 @@ REPO_MANAGER_TEST_CLEANUP_REPO=x86_64_rhel_10.0_test_repo \
 
 `./run_validation.sh fvt_repo_manager exec` (no tag) runs the complete playbook once, from `fvt/test_playbook.py`.
 `./run_validation.sh fvt_repo_manager <tag> exec` runs only that tag (`--tags <tag>`, from `fvt/<tag>/test_playbook.py`).
+`./run_validation.sh fvt_repo_manager test` (no tag) runs the complete playbook, then verifies every suite of every tag (cleanup and the other explicit-only tags are left out); `./run_validation.sh fvt_repo_manager verify` (no tag) runs that verification alone. `./run_validation.sh fvt_repo_manager <tag> test` runs that tag's playbook, then the tests of that tag.
 
 The FVT commands have fixed meanings:
 
@@ -90,8 +91,7 @@ The FVT commands have fixed meanings:
 - `verify`: run only its non-deploy verification tests.
 - `test`: run `exec` and then `verify`; verification is skipped when execution fails.
 
-An untagged `test` runs `precheck`, `prepare`, `execute`, and `status` in
-order, then verifies the non-destructive scenarios. Cleanup and catalog
+An untagged `test` runs the complete playbook, then verifies the non-destructive scenarios of every tag. Cleanup and catalog
 operations require explicit selection, and aggregate verification filters
 co-located `destructive` tests. Policy scenarios are verification-only.
 Catalog lifecycle commands require an exact suite, for example

@@ -32,6 +32,7 @@ verifies what that step creates. The three actions:
 
 `./run_validation.sh fvt_build_stream exec` (no tag) runs the complete playbook once, from `fvt/test_playbook.py`.
 `./run_validation.sh fvt_build_stream <tag> exec` runs only that tag (`--tags <tag>`, from `fvt/<tag>/test_playbook.py`).
+`./run_validation.sh fvt_build_stream test` (no tag) runs the complete playbook, then verifies every suite of every tag (cleanup and the other explicit-only tags are left out); `./run_validation.sh fvt_build_stream verify` (no tag) runs that verification alone. `./run_validation.sh fvt_build_stream <tag> test` runs that tag's playbook, then the tests of that tag.
 
 `execute` runs real pipelines: it builds and deploys images, runs a cadence
 cycle, an image cleanup pipeline and an automated cleanup pass. It changes live

@@ -695,32 +695,49 @@ class ValidationRunner:
 
     def _run_verify(
         self, tag: str, suite: str,
-        marker: str, verbose: str,
+        marker: str, verbose: str, aggregate: bool = False,
     ) -> int:
-        """Run verification tests only."""
+        """Run verification tests only.
+
+        Without a tag, a domain that has ``fvt/test_playbook.py`` verifies every suite of every
+        tag that is not explicit-only (one run per tag, in tag order); any other domain with
+        lifecycle tags verifies those in lifecycle order. ``aggregate`` applies the aggregate
+        marker exclusions (negative, destructive) to a single tag of that run.
+        """
         os.environ["OMNIA_COMMAND_TYPE"] = "verify"
         if not tag and self._all_exec_tags:
             selected_marker = marker or self._all_exec_marker
+            every_suite = os.path.isfile(
+                os.path.join(self.fvt_dir, FULL_PLAYBOOK_FILE),
+            )
             try:
                 available_tags = self._get_fvt_tags()
-                selected_tags = [
-                    _canonical_choice(
-                        str(verify_tag), available_tags, "all-verify tag",
-                    )
-                    for verify_tag in self._all_exec_tags
-                ]
+                if every_suite:
+                    selected_tags = [
+                        name for name in available_tags
+                        if name not in self._exclude_tags
+                    ]
+                    selected_marker = marker
+                else:
+                    selected_tags = [
+                        _canonical_choice(
+                            str(verify_tag), available_tags,
+                            "all-verify tag",
+                        )
+                        for verify_tag in self._all_exec_tags
+                    ]
             except ValueError as exc:
                 _err(str(exc))
                 return 2
-            _info("Running verification in lifecycle order...")
+            _info("Running verification of every suite in tag order...")
             for verify_tag in selected_tags:
                 rc = self._run_verify(
-                    verify_tag, "", selected_marker, verbose,
+                    verify_tag, "", selected_marker, verbose, every_suite,
                 )
                 if rc != 0:
-                    _fail(f"Lifecycle verification failed at {verify_tag}.")
+                    _fail(f"Verification failed at {verify_tag}.")
                     return rc
-            _ok("Lifecycle verification completed.")
+            _ok("Verification completed.")
             return 0
 
         test_paths = self._build_verify_paths(tag, suite)
@@ -733,7 +750,7 @@ class ValidationRunner:
             _err("No eligible FVT directories were found; refusing broad pytest discovery")
             return 2
         marker_expression = "not deploy"
-        if not tag:
+        if not tag or aggregate:
             try:
                 excluded_markers = [
                     _canonical_choice(
@@ -774,7 +791,12 @@ class ValidationRunner:
         self, tag: str, suite: str,
         marker: str, verbose: str,
     ) -> int:
-        """Run exec + verify (full flow)."""
+        """Run exec + verify (full flow).
+
+        With a tag: that tag's exec, then its verify. Without a tag, a domain that has
+        ``fvt/test_playbook.py`` runs its complete playbook, then every verify suite; any other
+        domain runs its lifecycle tags, each followed by its verify.
+        """
         failed = 0
         fd, results_file = tempfile.mkstemp(
             prefix="omnia_results_", suffix=".json",
@@ -783,7 +805,12 @@ class ValidationRunner:
         os.environ["OMNIA_SUPPRESS_SUMMARY"] = "true"
         os.environ["OMNIA_RESULTS_FILE"] = results_file
 
-        lifecycle_tags = [tag] if tag else self._all_exec_tags
+        if tag:
+            lifecycle_tags = [tag]
+        elif os.path.isfile(os.path.join(self.fvt_dir, FULL_PLAYBOOK_FILE)):
+            lifecycle_tags = []
+        else:
+            lifecycle_tags = self._all_exec_tags
         lifecycle_marker = marker
         if not tag and lifecycle_tags and not lifecycle_marker:
             lifecycle_marker = self._all_exec_marker
