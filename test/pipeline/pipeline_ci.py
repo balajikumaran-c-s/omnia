@@ -23,10 +23,11 @@ over SSH:
                           marker the cleanup jobs need
     checkout              record the commit of the clone and copy omnia.env (the clone itself is
                           made by the bootstrap of the initialization job)
-    nfs-check             read-only: every NFS share of storage_config.yml can be mounted
+    nfs-check             read-only: every Slurm/K8s NFS share of the OIM's storage_config.yml mounts
+                          (test/utils: fvt_utils cleanup --suite cleanup_nfs_shares)
+    cleanup-nfs           empty those shares (every share is checked first), then check they are empty
     cleanup <domain>      fvt_<domain> cleanup exec in the Omnia venv (utils: its playbook)
-    cleanup-omnia         omnia.sh --cleanup --all --skip-approval, then empty the Slurm and
-                          K8s NFS shares (library/functions/nfs_func.py, run on the OIM)
+    cleanup-omnia         omnia.sh --cleanup --all --skip-approval
     install               omnia.sh -s (recreates the Omnia venv, runs every domain-init)
     inputs                ONE stage: copy clusters/<cluster>/inputs/<domain>/ of every deploy
                           domain to <data>/<domain>/input/<project>/ and the catalog
@@ -331,39 +332,42 @@ pip install -q -r requirements.txt
 """, f"cleanup of {domain}")
 
 
-def _nfs(action: str) -> int:
-    """Check or empty the Slurm and K8s shares of the cluster's storage_config.yml on the OIM."""
-    cluster = apply_cluster()
+NFS_SUITE = "--suite cleanup_nfs_shares"
+
+
+def _nfs_scenario(command: str, marker: str, what: str) -> int:
+    """Run the cleanup_nfs_shares scenario of test/utils on the OIM (nothing to do without a venv)."""
+    apply_cluster()
     path = install_path()
-    if _dry_run(f"NFS share {action}"):
-        return 0
-    config = os.path.join(INPUTS_ROOT.format(cluster=cluster), "orchestrator", "storage_config.yml")
-    if not os.path.isfile(config):
-        _say(f"No {config} in the project, no NFS share to {action}")
-        return 0
-    with open(config, "rb") as handle:
-        rc, _ = remote(f"DATA=$(grep '^OMNIA_DATA_PATH=' {shlex.quote(path)}/src/main/omnia.env "
-                       f"2>/dev/null | cut -d= -f2); python3 {shlex.quote(path)}/test/pipeline/"
-                       f"nfs_cleanup.py {action} --storage-config - --protect \"${{DATA:-/opt/omnia}}\"",
-                       stdin=handle.read())
-    if rc:
-        _say(f"ERROR: NFS share {action} failed (exit code {rc})")
-    return rc
+    missing = f"echo 'No Omnia venv on the OIM, no NFS share to {what}'; exit 0"
+    return _run(f"""set -e
+{_activate(missing)}
+cd {shlex.quote(path)}/test/utils
+pip install -q -r requirements.txt
+./run_validation.sh fvt_utils cleanup {command} {NFS_SUITE} --marker {marker}
+""", f"NFS share {what}")
 
 
 def nfs_check() -> int:
-    return _mark("nfs_check", _nfs("check"))
+    """Read-only: every Slurm and K8s share of the OIM's storage_config.yml mounts."""
+    return _mark("nfs_check", _nfs_scenario("verify", "sanity", "check"))
+
+
+def cleanup_nfs() -> int:
+    """Empty the Slurm and K8s shares (check all first), then check they are empty."""
+    require_ready()
+    rc = _nfs_scenario("exec", "destructive", "empty")
+    return rc or _nfs_scenario("verify", "destructive", "verify as empty")
 
 
 def cleanup_omnia() -> int:
     apply_cluster()
     require_ready()
     path = install_path()
-    rc = _run(f"""set -e
+    return _run(f"""set -e
 cd {shlex.quote(path)}/src/main && chmod +x omnia.sh
 ./omnia.sh --cleanup --all --skip-approval
 """, "omnia.sh --cleanup --all")
-    return rc or _nfs("clear")
 
 
 def install() -> int:
@@ -714,7 +718,7 @@ def main(argv: List[str]) -> int:
     one = {"cleanup": cleanup, "credentials": credentials, "deploy": deploy,
            "verify": verify_domain}
     none = {"init": init, "checkout": checkout, "cleanup-omnia": cleanup_omnia,
-            "nfs-check": nfs_check, "install": install, "inputs": inputs, "summary": summary}
+            "nfs-check": nfs_check, "cleanup-nfs": cleanup_nfs, "install": install, "inputs": inputs, "summary": summary}
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
         return 0

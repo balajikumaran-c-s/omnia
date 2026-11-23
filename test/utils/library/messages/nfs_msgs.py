@@ -31,8 +31,8 @@ NFS_MSGS = {
     "removed": "  {name}: removed {files} files, {dirs} directories, {size} from {source}",
     "skipped_mounts": "  {name}: left {count} directory(ies) that are other mounts inside the "
                       "share",
-    "need_root": "emptying an NFS share needs root (mount). HOW TO FIX: the pipeline user on the "
-                 "OIM must be root",
+    "need_root": "emptying an NFS share needs root (mount). HOW TO FIX: run the test as root "
+                 "on the execution OIM",
     "no_mount_nfs": "mount.nfs is not installed. HOW TO FIX: install nfs-utils on the OIM",
     "bad_source": "NFS share {name}: {why}. HOW TO FIX: set a source like "
                   "<server ip or name>:/<export path> in the mounts of "
@@ -40,10 +40,10 @@ NFS_MSGS = {
     "denied": "NFS share {name}: the export path {export} is a system directory and is never "
               "emptied",
     "protected": "NFS share {name}: the export {export} is on this OIM and contains {path}, "
-                 "which the pipeline needs; it is not emptied",
+                 "which Omnia needs; it is not emptied",
     "mount_failed": "NFS share {name}: cannot mount {source}: {reason}. HOW TO FIX: check that "
                     "the server answers, the share is exported to this OIM and nfs-utils is "
-                    "installed; or remove the share from the nfs shares of the pipeline config",
+                    "installed; or remove the share from nfs_shares in test_config.yml",
     "mount_mismatch": "NFS share {name}: {mountpoint} is not the NFS mount of {source} after "
                       "mounting (found {found}); nothing was deleted",
     "empty_failed": "NFS share {name}: {count} entries could not be removed from {source}: "
@@ -56,6 +56,12 @@ NFS_MSGS = {
     "clients": "WARNING: {clients} are connected to this NFS server; what they still write "
                "to the share is deleted again, and can make the cleanup fail",
     "clients_hint": ". Still written by a connected client ({clients}): stop what writes to "
-                    "the share (on a Kubernetes node, kubelet), then run the pipeline again",
+                    "the share (on a Kubernetes node, kubelet), then run the scenario again",
+    "need_local_root": "the NFS shares are mounted by the execution OIM: run this scenario "
+                       "locally as root on it (oim_server_ip empty or the OIM itself)",
+    "no_shares": "no NFS share to empty: nfs_slurm and nfs_k8s are not NFS mounts of the "
+                 "storage_config.yml",
+    "emptied": "emptied: {names}",
+    "all_empty": "every NFS share is empty",
     "too_deep": "directory tree deeper than {depth} levels",
 }

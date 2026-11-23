@@ -16,7 +16,7 @@
 """Empty the NFS shares of storage_config.yml before a clean reinstall.
 
 Stale data in the Slurm and Kubernetes shares survives a reinstall, so
-the ``cleanup-omnia`` stage of the pipeline empties them (``nfs_cleanup.py`` on the OIM):
+the ``cleanup_nfs_shares`` scenario of the utils FVT empties them:
 
 1. every share is first mounted read-only and unmounted again (preflight): a share that
    cannot be reached fails the cleanup before anything else is deleted;
@@ -29,7 +29,7 @@ Safety (the lessons of the product's own security fixes):
 * ``host:/export`` is checked before use (an IPv4 address or a host name, an absolute path
   of plain characters without ``.`` or ``..``), and system directories are never emptied
   (the deny list of omnia.sh); an export on this OIM that holds the checkout, the data
-  path or the pipeline checkout is refused;
+  path or the Omnia checkout is refused;
 * the mount point is a new private folder (mode 0700, unpredictable name); after mounting
   it is checked in /proc/self/mountinfo to be an NFS mount of exactly that source, and
   nothing is deleted otherwise;
@@ -134,7 +134,7 @@ def _is_local(host: str) -> bool:
 
 
 def _check_protected(name: str, host: str, export: str, protected: List[str]) -> None:
-    """Refuse an export on this OIM that holds a path the pipeline needs."""
+    """Refuse an export on this OIM that holds a path Omnia needs."""
     if not _is_local(host):
         return
     for path in protected:

@@ -135,7 +135,7 @@ Parent Pipeline (.gitlab-ci.yml)
     ↓
     ├─→ Child Pipeline 1 (.gitlab-ci-cluster.yml) for cluster1
     │   ├─ initialization, setup_environment, nfs_check
-    │   ├─ cleanup_<domains>, cleanup_omnia (+ Slurm/K8s NFS shares)
+    │   ├─ cleanup_<domains>, cleanup_nfs (Slurm/K8s shares), cleanup_omnia
     │   ├─ setup_main (omnia.sh -s), test_main_installation
     │   ├─ inputs (all domains)
     │   ├─ <domains> (exec mode) and test_<domains>

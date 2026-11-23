@@ -24,7 +24,7 @@
 # Flow of the default mode:
 #   initialization (clone Omnia on the OIM, take the helpers from it) -> setup_environment
 #   -> nfs_check -> cleanup_<domain> ...
-#   -> cleanup_omnia (omnia.sh --cleanup --all, then the Slurm/K8s NFS shares)
+#   -> cleanup_nfs (the Slurm/K8s NFS shares, test/utils) -> cleanup_omnia (omnia.sh --cleanup --all)
 #   -> setup_main (omnia.sh -s) -> test_main_installation -> inputs (all domains, one stage)
 #   -> <domain> (exec mode) -> test_<domain> (verify) -> summary
 #
@@ -62,6 +62,7 @@ stages:
   - cleanup_discovery
   - cleanup_image_build_manager
   - cleanup_repo_manager
+  - cleanup_nfs
   - cleanup_omnia
   - setup_main
   - test_main_installation
@@ -407,6 +408,44 @@ cleanup_repo_manager:
   script:
     - python3 ci_tools/pipeline_ci.py cleanup repo_manager
 
+cleanup_nfs:
+  stage: cleanup_nfs
+  timeout: 3h
+  allow_failure: false
+  needs:
+    - job: initialization
+      artifacts: true
+    - job: setup_environment
+      artifacts: true
+    - job: cleanup_build_stream
+      artifacts: true
+      optional: true
+    - job: cleanup_utils
+      artifacts: true
+      optional: true
+    - job: cleanup_telemetry
+      artifacts: true
+      optional: true
+    - job: cleanup_orchestrator
+      artifacts: true
+      optional: true
+    - job: cleanup_discovery
+      artifacts: true
+      optional: true
+    - job: cleanup_image_build_manager
+      artifacts: true
+      optional: true
+    - job: cleanup_repo_manager
+      artifacts: true
+      optional: true
+  rules:
+    - if: '$SKIP_STAGES =~ /cleanup_nfs/'
+      when: never
+    - if: '($PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "default") && $DOMAINS == "default"'
+      when: always
+  script:
+    - python3 ci_tools/pipeline_ci.py cleanup-nfs
+
 cleanup_omnia:
   stage: cleanup_omnia
   timeout: 3h
@@ -435,6 +474,9 @@ cleanup_omnia:
       artifacts: true
       optional: true
     - job: cleanup_repo_manager
+      artifacts: true
+      optional: true
+    - job: cleanup_nfs
       artifacts: true
       optional: true
   rules:
@@ -641,9 +683,85 @@ summary:
   allow_failure: true
   variables:
     PIPELINE_JOB_ORDER: "initialization,setup_environment,nfs_check,cleanup_build_stream,cleanup_utils,cleanup_telemetry,cleanu\
-      p_orchestrator,cleanup_discovery,cleanup_image_build_manager,cleanup_repo_manager,cleanup_omnia,setup_\
-      main,test_main_installation,inputs,repo_manager,test_repo_manager,image_build_manager,test_image_build\
-      _manager,discovery,test_discovery,orchestrator,test_orchestrator,telemetry,test_telemetry"
+      p_orchestrator,cleanup_discovery,cleanup_image_build_manager,cleanup_repo_manager,cleanup_nfs,cleanup_\
+      omnia,setup_main,test_main_installation,inputs,repo_manager,test_repo_manager,image_build_manager,test\
+      _image_build_manager,discovery,test_discovery,orchestrator,test_orchestrator,telemetry,test_telemetry"
+  needs:
+    - job: initialization
+      artifacts: true
+      optional: true
+    - job: setup_environment
+      artifacts: true
+      optional: true
+    - job: nfs_check
+      artifacts: true
+      optional: true
+    - job: cleanup_build_stream
+      artifacts: true
+      optional: true
+    - job: cleanup_utils
+      artifacts: true
+      optional: true
+    - job: cleanup_telemetry
+      artifacts: true
+      optional: true
+    - job: cleanup_orchestrator
+      artifacts: true
+      optional: true
+    - job: cleanup_discovery
+      artifacts: true
+      optional: true
+    - job: cleanup_image_build_manager
+      artifacts: true
+      optional: true
+    - job: cleanup_repo_manager
+      artifacts: true
+      optional: true
+    - job: cleanup_nfs
+      artifacts: true
+      optional: true
+    - job: cleanup_omnia
+      artifacts: true
+      optional: true
+    - job: setup_main
+      artifacts: true
+      optional: true
+    - job: test_main_installation
+      artifacts: true
+      optional: true
+    - job: inputs
+      artifacts: true
+      optional: true
+    - job: repo_manager
+      artifacts: true
+      optional: true
+    - job: test_repo_manager
+      artifacts: true
+      optional: true
+    - job: image_build_manager
+      artifacts: true
+      optional: true
+    - job: test_image_build_manager
+      artifacts: true
+      optional: true
+    - job: discovery
+      artifacts: true
+      optional: true
+    - job: test_discovery
+      artifacts: true
+      optional: true
+    - job: orchestrator
+      artifacts: true
+      optional: true
+    - job: test_orchestrator
+      artifacts: true
+      optional: true
+    - job: telemetry
+      artifacts: true
+      optional: true
+    - job: test_telemetry
+      artifacts: true
+      optional: true
   rules:
     - if: '$SKIP_STAGES =~ /summary/'
       when: never

@@ -12,7 +12,6 @@ How the pipeline sources fit together, how to change them and how they are teste
 | `.gitlab-ci-cluster.yml` | Generated cluster pipeline (committed) | GitLab |
 | `pipeline_ci.py` | The command of every cluster job | the GitLab runner, taken from the Omnia clone |
 | `library/functions/email_func.py`, `library/vars/email_vars.py` | The summary email | the GitLab runner, taken from the clone |
-| `nfs_cleanup.py`, `library/functions/nfs_func.py`, `library/vars/nfs_vars.py`, `library/messages/nfs_msgs.py` | Emptying the NFS shares | the OIM (from the Omnia checkout) |
 | `setup_gitlab_project.py` | Creates the project, uploads files, sets variables, `--scan-host-keys` | your machine |
 | `send_email.py` | Email of the utils and build stream pipelines | the GitLab runner |
 

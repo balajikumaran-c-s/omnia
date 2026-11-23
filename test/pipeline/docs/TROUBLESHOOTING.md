@@ -203,7 +203,7 @@ installing, so a half-clean OIM is not reinstalled.
 
 ## NFS Check or NFS Cleanup Failed
 
-**Symptoms:** `nfs_check` fails, or `cleanup_omnia` reports `NFS share ...`; the cleanups after a
+**Symptoms:** `nfs_check` fails, or `cleanup_nfs` reports `NFS share ...`; the cleanups after a
 failed `nfs_check` fail at once with `nfs_check did not pass, so nothing was cleaned`.
 
 **Solutions:**
@@ -211,12 +211,16 @@ failed `nfs_check` fail at once with `nfs_check did not pass, so nothing was cle
 1. `cannot mount`: the server must answer and export the share to the OIM, and `nfs-utils` must
    be installed on the OIM.
 2. `the export path ... is a system directory`, or `... contains /root/omnia`: the share points
-   at a protected path on the OIM. Fix `mounts` in
-   `clusters/<cluster>/inputs/orchestrator/storage_config.yml`.
+   at a protected path on the OIM. Fix `mounts` in the `storage_config.yml` of the orchestrator
+   input folder of the OIM (`<OMNIA_DATA_PATH>/orchestrator/input/<project>/`), or in the project
+   input `clusters/<cluster>/inputs/orchestrator/storage_config.yml` for the next run.
 3. `entries could not be removed`: the export probably squashes root (it needs `no_root_squash`
    for the OIM), or a client still writes to it (stop it, for example kubelet on a node).
-4. To not touch the shares, remove `nfs_slurm` and `nfs_k8s` from `mounts`, or add `nfs_check` to
-   `skip_stages` and use `DOMAINS` other than `default` (the shares are only emptied with `default`).
+4. To not touch the shares, remove `nfs_slurm` and `nfs_k8s` from `mounts` (or from `nfs_shares` in
+   `test/utils/test_config.yml`), or add `nfs_check,cleanup_nfs` to `skip_stages`. The shares are
+   only emptied with `DOMAINS=default`.
+5. `no Omnia venv ... no NFS share to ...`: not an error. There is no Omnia venv yet (first run), so
+   nothing was mounted and nothing was emptied.
 
 ---
 

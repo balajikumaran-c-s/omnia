@@ -69,7 +69,7 @@ INTRO = """
 # Flow of the default mode:
 #   initialization (clone Omnia on the OIM, take the helpers from it) -> setup_environment
 #   -> nfs_check -> cleanup_<domain> ...
-#   -> cleanup_omnia (omnia.sh --cleanup --all, then the Slurm/K8s NFS shares)
+#   -> cleanup_nfs (the Slurm/K8s NFS shares, test/utils) -> cleanup_omnia (omnia.sh --cleanup --all)
 #   -> setup_main (omnia.sh -s) -> test_main_installation -> inputs (all domains, one stage)
 #   -> <domain> (exec mode) -> test_<domain> (verify) -> summary
 #
@@ -224,7 +224,7 @@ def _job(name: str, stage: str, script: Sequence[str], conditions: Sequence[str]
 def render() -> str:
     """Return the text of .gitlab-ci-cluster.yml."""
     stages = ["initialization", "setup_environment", "nfs_check",
-              *(f"cleanup_{d}" for d in CLEANUP_ORDER), "cleanup_omnia", "setup_main",
+              *(f"cleanup_{d}" for d in CLEANUP_ORDER), "cleanup_nfs", "cleanup_omnia", "setup_main",
               "test_main_installation", "inputs",
               *(s for d in DEPLOY_ORDER for s in (d, f"test_{d}")), "summary"]
     out = [LICENSE + INTRO, "workflow:", "  rules:",
@@ -257,6 +257,11 @@ def render() -> str:
                          needs=["initialization", "setup_environment"], optional=list(previous),
                          allow_failure=domain in TOLERATED_CLEANUPS, skip=domain))
         previous.append(name)
+    jobs.append(_job("cleanup_nfs", "cleanup_nfs", ["cleanup-nfs"],
+                     [f'{CLEANUP_MODE} && $DOMAINS == "default"'], when="always",
+                     needs=["initialization", "setup_environment"], optional=list(previous),
+                     allow_failure=False))
+    previous.append("cleanup_nfs")
     jobs.append(_job("cleanup_omnia", "cleanup_omnia", ["cleanup-omnia"],
                      [f'{CLEANUP_MODE} && $DOMAINS == "default"'], when="always",
                      needs=["initialization", "setup_environment"], optional=list(previous),
@@ -276,6 +281,7 @@ def render() -> str:
                           f"{_domain_condition(domain)}"], allow_failure=True,
                          skip=domain, id_tokens=True))
     summary = _job("summary", "summary", ["summary"], [ANY_MODE], when="always",
+                   optional=[name for name in stages if name != "summary"],
                    allow_failure=True, artifacts=["pipeline_reports/", "pipeline_job_status/"],
                    variables={"PIPELINE_JOB_ORDER": ",".join(s for s in stages if s != "summary")})
     jobs.append(summary)

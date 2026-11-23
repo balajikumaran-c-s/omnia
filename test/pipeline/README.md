@@ -28,7 +28,8 @@ For every cluster, in this order:
    and takes the pipeline helpers (`pipeline_ci.py`, `library/`) from that clone, then checks the
    input folders and the SSH connection.
 2. **Cleanup**: one stage per domain (`fvt_<domain> cleanup exec`), then `omnia.sh --cleanup
-   --all` and the emptying of the Slurm and Kubernetes NFS shares. Every cleanup runs, even
+   --all`. Between them the Slurm and Kubernetes NFS shares are emptied by the `test/utils` FVT
+   scenario `cleanup_nfs_shares`. Every cleanup runs, even
    after one failed. If any failed, nothing is installed and the pipeline ends red.
 3. **Install**: `omnia.sh -s` creates the Omnia venv and runs every `domain-init`, then
    `fvt_main verify` tests it.
@@ -41,7 +42,7 @@ For every cluster, in this order:
    reports.
 
 ```
-initialization > setup_environment > nfs_check > cleanup_<domain> ... > cleanup_omnia
+initialization > setup_environment > nfs_check > cleanup_<domain> ... > cleanup_nfs > cleanup_omnia
    > setup_main > test_main_installation > inputs > <domain> > test_<domain> ... > summary
 ```
 
@@ -67,9 +68,8 @@ pipeline_config.yml            The one file you fill in (clusters, OpenBao, mode
 setup_gitlab_project.py        Creates or updates the GitLab project, files and variables
 pipeline_render.py             Generates .gitlab-ci-cluster.yml (stages, rules, order)
 pipeline_ci.py                 The logic of every cluster job (taken from the Omnia clone, see below)
-nfs_cleanup.py                 Empties the NFS shares (runs on the OIM, from the Omnia checkout)
 send_email.py                  Email of the utils and build stream pipelines
-library/                       Helpers: email_func (runner), nfs_func (OIM), their vars/messages
+library/                       email_func (summary email, runs on the runner) and its vars
                                (not uploaded to GitLab: the jobs use the copy in the Omnia clone)
 docs/                          The guides listed above
 ```
@@ -157,8 +157,9 @@ All settings and variables: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 - **OpenBao:** a JWT login, secrets are written to the OIM with mode 600 and vault-encrypted;
   only field names reach the logs. TLS is verified with `BAO_CA_CERT`. The default stays
   unverified, with a warning, as it always was.
-- **NFS:** nothing is deleted unless every share was mounted read-only first. System
-  directories and the Omnia checkout are never emptied. See
+- **NFS:** the shares are emptied by `test/utils` (`fvt_utils cleanup --suite cleanup_nfs_shares`),
+  only with `--marker destructive`, and nothing is deleted unless every share was mounted
+  read-only first. System directories and the Omnia checkout are never emptied. See
   [docs/CLUSTER_PIPELINE.md](docs/CLUSTER_PIPELINE.md#nfs-share-cleanup).
 - **Concurrency:** one pipeline per cluster at a time (`resource_group`); runner failures are
   retried once; artifacts expire after a week.

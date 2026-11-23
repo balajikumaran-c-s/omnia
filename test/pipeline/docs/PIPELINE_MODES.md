@@ -16,7 +16,7 @@ Runs the complete lifecycle: setup the environment, clean up any previous deploy
 
 **Flow:**
 ```
-initialization > setup_environment > nfs_check > cleanup_<domains> > cleanup_omnia >
+initialization > setup_environment > nfs_check > cleanup_<domains> > cleanup_nfs > cleanup_omnia >
 setup_main > test_main_installation > inputs > <domains> > test_<domains> > summary
 ```
 
@@ -68,7 +68,7 @@ Runs domain-specific cleanup playbooks (`--tags cleanup`) and optionally runs `o
 
 **Flow:**
 ```
-initialization > setup_environment > nfs_check (domains=default) > cleanup_<domains> >
+initialization > setup_environment > nfs_check (domains=default) > cleanup_<domains> > cleanup_nfs >
 cleanup_omnia (only if domains=default) > summary
 ```
 
@@ -221,7 +221,7 @@ skip_stages: "image_build_manager,telemetry"
 
 **Valid values for `skip_stages`:**
 - `repo_manager`, `image_build_manager`, `discovery`, `orchestrator`, `telemetry`, `build_stream` — skips cleanup + deploy + test for that domain
-- `setup_environment`, `nfs_check`, `setup_main`, `test_main_installation`, `inputs`, `cleanup_omnia` — skips that specific stage
+- `setup_environment`, `nfs_check`, `setup_main`, `test_main_installation`, `inputs`, `cleanup_nfs`, `cleanup_omnia` — skips that specific stage
 
 ---
 
@@ -242,21 +242,22 @@ The pipeline runs these stages in order. Which stages actually execute depends o
  8. cleanup_discovery               Y                     Y
  9. cleanup_image_build_manager     Y                     Y
 10. cleanup_repo_manager            Y                     Y
-11. cleanup_omnia                   Y                     Y      (DOMAINS=default)
-12. setup_main                      Y          (opt)    (opt)
-13. test_main_installation        (test)       (test)
-14. inputs                          Y            Y
-15. repo_manager                    Y            Y
-16. test_repo_manager             (test)       (test)
-17. image_build_manager             Y            Y
-18. test_image_build_manager      (test)       (test)
-19. discovery                     (disc)       (disc)
-20. test_discovery                (disc+test)  (disc+test)
-21. orchestrator                    Y            Y
-22. test_orchestrator             (test)       (test)
-23. telemetry                       Y            Y
-24. test_telemetry                (test)       (test)
-25. summary                         Y            Y        Y
+11. cleanup_nfs                     Y                     Y      (DOMAINS=default)
+12. cleanup_omnia                   Y                     Y      (DOMAINS=default)
+13. setup_main                      Y          (opt)    (opt)
+14. test_main_installation        (test)       (test)
+15. inputs                          Y            Y
+16. repo_manager                    Y            Y
+17. test_repo_manager             (test)       (test)
+18. image_build_manager             Y            Y
+19. test_image_build_manager      (test)       (test)
+20. discovery                     (disc)       (disc)
+21. test_discovery                (disc+test)  (disc+test)
+22. orchestrator                    Y            Y
+23. test_orchestrator             (test)       (test)
+24. telemetry                       Y            Y
+25. test_telemetry                (test)       (test)
+26. summary                         Y            Y        Y
 ```
 
 A failed cleanup does not stop the other cleanups, but nothing after `cleanup_omnia` runs.
@@ -279,7 +280,8 @@ Legend:
 | **setup_environment** | Clones Omnia on the OIM and copies `omnia.env` |
 | **nfs_check** | `DOMAINS=default` only: every Slurm and K8s NFS share is mounted read-only and unmounted, so an unreachable share stops the run before anything is deleted |
 | **cleanup_\<domain\>** | Runs `fvt_<domain> cleanup exec` in the Omnia venv (utils: its playbook). Every cleanup runs even after one failed; nothing is installed after a failure. First run: nothing to clean |
-| **cleanup_omnia** | Runs `omnia.sh --cleanup --all`, then empties the Slurm and K8s NFS shares. Only runs when `DOMAINS=default` |
+| **cleanup_nfs** | Empties the Slurm and K8s NFS shares with `fvt_utils cleanup --suite cleanup_nfs_shares --marker destructive`. Only runs when `DOMAINS=default` |
+| **cleanup_omnia** | Runs `omnia.sh --cleanup --all`. Only runs when `DOMAINS=default` |
 | **setup_main** | Runs `omnia.sh -s`: the Omnia venv and every `domain-init` |
 | **test_main_installation** | Runs `run_validation.sh fvt_main verify` in the Omnia venv |
 | **inputs** | One stage for all domains: copies `clusters/<name>/inputs/<domain>/` and the catalog to the OIM |

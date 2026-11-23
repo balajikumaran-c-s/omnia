@@ -59,3 +59,12 @@ EMPTY_PAUSE_SECONDS = 3
 
 # Where the NFS server lists its connected clients (when the share is served by this OIM).
 NFSD_CLIENTS_DIR = "/proc/fs/nfsd/clients"
+
+# Mounts of the orchestrator storage_config.yml that the cleanup_nfs_shares scenario empties.
+NFS_SHARE_NAMES = ("nfs_slurm", "nfs_k8s")
+
+# storage_config.yml of the orchestrator input folder on the execution OIM.
+STORAGE_CONFIG_FILE = "storage_config.yml"
+
+# Domain whose input folder holds storage_config.yml.
+STORAGE_CONFIG_DOMAIN = "orchestrator"
