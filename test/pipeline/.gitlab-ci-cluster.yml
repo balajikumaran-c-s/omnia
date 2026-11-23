@@ -22,13 +22,16 @@
 #   PIPELINE_MODE=cleanup  ->  cleanups only
 #
 # Flow of the default mode:
-#   initialization (clone Omnia on the OIM, take the helpers from it) -> setup_environment
-#   -> nfs_check -> cleanup_<domain> ...
-#   -> cleanup_nfs (the Slurm/K8s NFS shares, test/utils) -> cleanup_omnia (omnia.sh --cleanup --all)
-#   -> setup_main (omnia.sh -s) -> test_main_installation -> inputs (all domains, one stage)
-#   -> <domain> (exec mode) -> test_<domain> (verify) -> summary
+#   initialization: clone Omnia on the OIM, take the helpers from it, checks, commit and
+#                   omnia.env, NFS check (one stage)
+#   cleanup_<domain> ...: fvt_<domain> cleanup test (exec, then verify), one stage per domain
+#   cleanup_omnia: the Slurm/K8s NFS shares (test/utils), then omnia.sh --cleanup --all
+#   setup_main: omnia.sh -s, then the inputs of every domain (one stage)
+#   test_main_installation -> <domain> (exec of every tag) -> test_<domain> (verify) ... -> summary
 #
-# A failed cleanup does not stop the other cleanups; nothing is installed after it.
+# A failed cleanup does not stop the other cleanups; nothing is installed after it. A failed
+# domain exec stops the pipeline (its verify and the later domains are skipped); a failed verify
+# does not stop the next domain.
 #
 # Variables: DOMAINS (default, or a regex such as repo_manager|orchestrator), SKIP_STAGES,
 # ENABLE_SETUP, ENABLE_DISCOVERY, TEST_MODE, DRY_RUN, VERBOSE, <DOMAIN>_TAGS (comma list of FVT
@@ -53,8 +56,6 @@ variables:
 
 stages:
   - initialization
-  - setup_environment
-  - nfs_check
   - cleanup_build_stream
   - cleanup_utils
   - cleanup_telemetry
@@ -62,11 +63,9 @@ stages:
   - cleanup_discovery
   - cleanup_image_build_manager
   - cleanup_repo_manager
-  - cleanup_nfs
   - cleanup_omnia
   - setup_main
   - test_main_installation
-  - inputs
   - repo_manager
   - test_repo_manager
   - image_build_manager
@@ -113,6 +112,7 @@ initialization:
     paths:
       - pipeline_job_status/
       - ci_tools/
+      - actual_commit_sha.txt
   script:
     - |
       python3 - <<'PYEOF'
@@ -176,48 +176,7 @@ initialization:
                " must be a branch that has the pipeline helpers")
       print("Cloned " + repo + " (" + branch + ") to " + path + " and took the pipeline helpers from it")
       PYEOF
-    - python3 ci_tools/pipeline_ci.py init
-
-setup_environment:
-  stage: setup_environment
-  timeout: 3h
-  needs:
-    - job: initialization
-      artifacts: true
-  rules:
-    - if: '$SKIP_STAGES =~ /setup_environment/'
-      when: never
-    - if: '$PIPELINE_MODE == "default" || $PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "deploy"'
-      when: on_success
-  artifacts:
-    when: always
-    expire_in: 1 week
-    paths:
-      - pipeline_job_status/
-      - actual_commit_sha.txt
-  script:
-    - python3 ci_tools/pipeline_ci.py checkout
-
-nfs_check:
-  stage: nfs_check
-  timeout: 3h
-  needs:
-    - job: initialization
-      artifacts: true
-    - job: setup_environment
-      artifacts: true
-  rules:
-    - if: '$SKIP_STAGES =~ /nfs_check/'
-      when: never
-    - if: '($PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "default") && $DOMAINS == "default"'
-      when: on_success
-  artifacts:
-    when: always
-    expire_in: 1 week
-    paths:
-      - pipeline_job_status/
-  script:
-    - python3 ci_tools/pipeline_ci.py nfs-check
+    - python3 ci_tools/pipeline_ci.py initialize
 
 cleanup_build_stream:
   stage: cleanup_build_stream
@@ -225,8 +184,6 @@ cleanup_build_stream:
   allow_failure: false
   needs:
     - job: initialization
-      artifacts: true
-    - job: setup_environment
       artifacts: true
   rules:
     - if: '$SKIP_STAGES =~ /build_stream/'
@@ -243,8 +200,6 @@ cleanup_utils:
   allow_failure: true
   needs:
     - job: initialization
-      artifacts: true
-    - job: setup_environment
       artifacts: true
     - job: cleanup_build_stream
       artifacts: true
@@ -264,8 +219,6 @@ cleanup_telemetry:
   allow_failure: false
   needs:
     - job: initialization
-      artifacts: true
-    - job: setup_environment
       artifacts: true
     - job: cleanup_build_stream
       artifacts: true
@@ -288,8 +241,6 @@ cleanup_orchestrator:
   allow_failure: false
   needs:
     - job: initialization
-      artifacts: true
-    - job: setup_environment
       artifacts: true
     - job: cleanup_build_stream
       artifacts: true
@@ -315,8 +266,6 @@ cleanup_discovery:
   allow_failure: true
   needs:
     - job: initialization
-      artifacts: true
-    - job: setup_environment
       artifacts: true
     - job: cleanup_build_stream
       artifacts: true
@@ -345,8 +294,6 @@ cleanup_image_build_manager:
   allow_failure: false
   needs:
     - job: initialization
-      artifacts: true
-    - job: setup_environment
       artifacts: true
     - job: cleanup_build_stream
       artifacts: true
@@ -379,8 +326,6 @@ cleanup_repo_manager:
   needs:
     - job: initialization
       artifacts: true
-    - job: setup_environment
-      artifacts: true
     - job: cleanup_build_stream
       artifacts: true
       optional: true
@@ -408,44 +353,6 @@ cleanup_repo_manager:
   script:
     - python3 ci_tools/pipeline_ci.py cleanup repo_manager
 
-cleanup_nfs:
-  stage: cleanup_nfs
-  timeout: 3h
-  allow_failure: false
-  needs:
-    - job: initialization
-      artifacts: true
-    - job: setup_environment
-      artifacts: true
-    - job: cleanup_build_stream
-      artifacts: true
-      optional: true
-    - job: cleanup_utils
-      artifacts: true
-      optional: true
-    - job: cleanup_telemetry
-      artifacts: true
-      optional: true
-    - job: cleanup_orchestrator
-      artifacts: true
-      optional: true
-    - job: cleanup_discovery
-      artifacts: true
-      optional: true
-    - job: cleanup_image_build_manager
-      artifacts: true
-      optional: true
-    - job: cleanup_repo_manager
-      artifacts: true
-      optional: true
-  rules:
-    - if: '$SKIP_STAGES =~ /cleanup_nfs/'
-      when: never
-    - if: '($PIPELINE_MODE == "cleanup" || $PIPELINE_MODE == "default") && $DOMAINS == "default"'
-      when: always
-  script:
-    - python3 ci_tools/pipeline_ci.py cleanup-nfs
-
 cleanup_omnia:
   stage: cleanup_omnia
   timeout: 3h
@@ -453,8 +360,6 @@ cleanup_omnia:
   needs:
     - job: initialization
       artifacts: true
-    - job: setup_environment
-      artifacts: true
     - job: cleanup_build_stream
       artifacts: true
       optional: true
@@ -474,9 +379,6 @@ cleanup_omnia:
       artifacts: true
       optional: true
     - job: cleanup_repo_manager
-      artifacts: true
-      optional: true
-    - job: cleanup_nfs
       artifacts: true
       optional: true
   rules:
@@ -493,12 +395,12 @@ setup_main:
   rules:
     - if: '$SKIP_STAGES =~ /setup_main/'
       when: never
-    - if: '$PIPELINE_MODE == "default"'
-      when: on_success
     - if: '$ENABLE_SETUP == "true"'
       when: on_success
+    - if: '($PIPELINE_MODE == "deploy" || $PIPELINE_MODE == "default")'
+      when: on_success
   script:
-    - python3 ci_tools/pipeline_ci.py install
+    - python3 ci_tools/pipeline_ci.py setup-main
 
 test_main_installation:
   stage: test_main_installation
@@ -510,17 +412,6 @@ test_main_installation:
       when: on_success
   script:
     - python3 ci_tools/pipeline_ci.py verify main
-
-inputs:
-  stage: inputs
-  timeout: 3h
-  rules:
-    - if: '$SKIP_STAGES =~ /inputs/'
-      when: never
-    - if: '($PIPELINE_MODE == "deploy" || $PIPELINE_MODE == "default")'
-      when: on_success
-  script:
-    - python3 ci_tools/pipeline_ci.py inputs
 
 repo_manager:
   stage: repo_manager
@@ -682,18 +573,12 @@ summary:
   timeout: 3h
   allow_failure: true
   variables:
-    PIPELINE_JOB_ORDER: "initialization,setup_environment,nfs_check,cleanup_build_stream,cleanup_utils,cleanup_telemetry,cleanu\
-      p_orchestrator,cleanup_discovery,cleanup_image_build_manager,cleanup_repo_manager,cleanup_nfs,cleanup_\
-      omnia,setup_main,test_main_installation,inputs,repo_manager,test_repo_manager,image_build_manager,test\
-      _image_build_manager,discovery,test_discovery,orchestrator,test_orchestrator,telemetry,test_telemetry"
+    PIPELINE_JOB_ORDER: "initialization,cleanup_build_stream,cleanup_utils,cleanup_telemetry,cleanup_orchestrator,cleanup_disco\
+      very,cleanup_image_build_manager,cleanup_repo_manager,cleanup_omnia,setup_main,test_main_installation,\
+      repo_manager,test_repo_manager,image_build_manager,test_image_build_manager,discovery,test_discovery,o\
+      rchestrator,test_orchestrator,telemetry,test_telemetry"
   needs:
     - job: initialization
-      artifacts: true
-      optional: true
-    - job: setup_environment
-      artifacts: true
-      optional: true
-    - job: nfs_check
       artifacts: true
       optional: true
     - job: cleanup_build_stream
@@ -717,9 +602,6 @@ summary:
     - job: cleanup_repo_manager
       artifacts: true
       optional: true
-    - job: cleanup_nfs
-      artifacts: true
-      optional: true
     - job: cleanup_omnia
       artifacts: true
       optional: true
@@ -727,9 +609,6 @@ summary:
       artifacts: true
       optional: true
     - job: test_main_installation
-      artifacts: true
-      optional: true
-    - job: inputs
       artifacts: true
       optional: true
     - job: repo_manager

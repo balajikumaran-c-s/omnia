@@ -149,7 +149,8 @@ cluster1:
     domains: "default"
 
     # Force environment setup even in deploy/cleanup modes
-    # Normally, setup_environment only runs in "default" mode
+    # Normally, the install (setup_main) only runs in "default" mode; in "deploy" mode setup_main
+    # only copies the inputs
     # Set to "true" if target doesn't have Omnia installed yet
     # Default: "false"
     enable_setup: "false"
@@ -181,9 +182,9 @@ cluster1:
     # Useful for disabling specific domains or stages without modifying config
     # Valid values:
     #   - repo_manager, image_build_manager, orchestrator, discovery, telemetry, build_stream (skip cleanup+deploy+test)
-    #   - setup_environment, nfs_check, setup_main, test_main_installation, inputs, cleanup_nfs, cleanup_omnia
-    #     (skip specific stages; skipping setup_environment skips the clone, so use it only when
-    #     the checkout on the OIM is already current)
+    #   - setup_main, test_main_installation, cleanup_omnia (skip that stage)
+    #   - nfs_check (skips the NFS check inside initialization), inputs (skips the input copy
+    #     inside setup_main)
     # Example: "repo_manager,telemetry" (skip both domains entirely)
     # Default: "" (skip nothing)
     skip_stages: ""

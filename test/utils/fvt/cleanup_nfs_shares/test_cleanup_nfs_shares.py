@@ -22,7 +22,8 @@ Empties the Slurm and Kubernetes NFS shares of the orchestrator storage_config.y
 - E001 (destructive) checks every share first, then empties each one (the exports stay).
 - V002 (destructive) checks that no entry is left.
 
-The destructive tests run only with ``--marker destructive``. The scenario needs a local run
+The destructive tests run only with ``--marker destructive``
+(``./run_validation.sh fvt_utils cleanup_nfs_shares test --marker destructive``). The scenario needs a local run
 as root on the execution OIM, because the shares are mounted there.
 """
 

@@ -156,17 +156,19 @@ These cases verify combined cleanup functionality.
 
 ---
 
-## Cleanup NFS Shares Test Cases
+## Cleanup NFS Shares Test Cases (tag `cleanup_nfs_shares`)
 
 These cases empty the Slurm and Kubernetes NFS shares (`nfs_slurm` and `nfs_k8s` of the orchestrator
 `storage_config.yml`, see `nfs_shares` and `nfs_storage_config` in `test_config.yml`). They need a
 local run as root on the execution OIM. The destructive cases run only with `--marker destructive`:
 
 ```bash
-./run_validation.sh fvt_utils cleanup verify --suite cleanup_nfs_shares --marker sanity        # read-only check
-./run_validation.sh fvt_utils cleanup exec   --suite cleanup_nfs_shares --marker destructive   # empty
-./run_validation.sh fvt_utils cleanup verify --suite cleanup_nfs_shares --marker destructive   # now empty
+./run_validation.sh fvt_utils cleanup_nfs_shares verify --marker sanity        # read-only check
+./run_validation.sh fvt_utils cleanup_nfs_shares test   --marker destructive   # empty, then check
 ```
+
+`cleanup_nfs_shares` is its own tag, so `fvt_utils cleanup` (the utils cleanup) never touches the
+NFS shares.
 
 | Sequence | TC ID | Test | Markers | Validation | Pass criteria |
 |----------|-------|------|---------|------------|---------------|

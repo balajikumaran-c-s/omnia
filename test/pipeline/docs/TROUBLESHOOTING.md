@@ -203,8 +203,10 @@ installing, so a half-clean OIM is not reinstalled.
 
 ## NFS Check or NFS Cleanup Failed
 
-**Symptoms:** `nfs_check` fails, or `cleanup_nfs` reports `NFS share ...`; the cleanups after a
-failed `nfs_check` fail at once with `nfs_check did not pass, so nothing was cleaned`.
+**Symptoms:** the NFS check in `initialization` fails, or `cleanup_omnia` reports `NFS share ...`;
+the cleanups after a failed `initialization` fail at once with `initialization did not pass, so
+nothing was cleaned`. If the shares cannot be emptied, `cleanup_omnia` does not run
+`omnia.sh --cleanup --all`, so the Omnia venv is kept and the next run can try again.
 
 **Solutions:**
 
@@ -217,7 +219,7 @@ failed `nfs_check` fail at once with `nfs_check did not pass, so nothing was cle
 3. `entries could not be removed`: the export probably squashes root (it needs `no_root_squash`
    for the OIM), or a client still writes to it (stop it, for example kubelet on a node).
 4. To not touch the shares, remove `nfs_slurm` and `nfs_k8s` from `mounts` (or from `nfs_shares` in
-   `test/utils/test_config.yml`), or add `nfs_check,cleanup_nfs` to `skip_stages`. The shares are
+   `test/utils/test_config.yml`), or add `nfs_check` to `skip_stages`. The shares are
    only emptied with `DOMAINS=default`.
 5. `no Omnia venv ... no NFS share to ...`: not an error. There is no Omnia venv yet (first run), so
    nothing was mounted and nothing was emptied.

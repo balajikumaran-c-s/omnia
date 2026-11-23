@@ -19,18 +19,21 @@ The generated jobs of the cluster pipeline are one-line calls to this script, so
 the logic is testable and the YAML stays small.  Every command runs on the OIM
 over SSH:
 
-    init                  check the CI/CD variables, the SSH trust and the inputs; writes the
-                          marker the cleanup jobs need
+    initialize            the whole initialization stage: init, checkout and, where the shares are
+                          emptied later, nfs-check; leaves the marker the cleanup jobs need
+    init                  check the CI/CD variables, the SSH trust and the inputs
     checkout              record the commit of the clone and copy omnia.env (the clone itself is
                           made by the bootstrap of the initialization job)
     nfs-check             read-only: every Slurm/K8s NFS share of the OIM's storage_config.yml mounts
-                          (test/utils: fvt_utils cleanup --suite cleanup_nfs_shares)
-    cleanup-nfs           empty those shares (every share is checked first), then check they are empty
-    cleanup <domain>      fvt_<domain> cleanup exec in the Omnia venv (utils: its playbook)
-    cleanup-omnia         omnia.sh --cleanup --all --skip-approval
-    install               omnia.sh -s (recreates the Omnia venv, runs every domain-init)
-    inputs                ONE stage: copy clusters/<cluster>/inputs/<domain>/ of every deploy
-                          domain to <data>/<domain>/input/<project>/ and the catalog
+                          (test/utils: fvt_utils cleanup_nfs_shares verify --marker sanity)
+    cleanup <domain>      fvt_<domain> cleanup test: exec, then verify, in the Omnia venv (utils:
+                          only its combined cleanup tests, which never touch the NFS shares)
+    cleanup-omnia         one stage: empty the Slurm/K8s NFS shares (fvt_utils cleanup_nfs_shares
+                          test --marker destructive), then omnia.sh --cleanup --all --skip-approval
+    setup-main            one stage: omnia.sh -s, then copy clusters/<cluster>/inputs/<domain>/ of
+                          every deploy domain to <data>/<domain>/input/<project>/ and the catalog
+    install               omnia.sh -s only (recreates the Omnia venv, runs every domain-init)
+    inputs                the input copy only
     credentials <domain>  OpenBao credentials of the domain, vault-encrypted on the OIM
     deploy <domain>       credentials, then every FVT tag in exec mode (<DOMAIN>_TAGS overrides)
     stage <domain> <tag>  fvt_<domain> <tag> exec
@@ -90,7 +93,6 @@ CREDENTIAL_FILES = {
     "orchestrator": "orchestrator_credentials.yml",
     "telemetry": "telemetry_credentials.yml",
 }
-PLAYBOOK_CLEANUP = ("utils",)
 OPTIONAL_CREDENTIALS = ("discovery",)
 TEST_CREDENTIALS = ("orchestrator", "telemetry")
 BAO_TIMEOUT = 30
@@ -242,7 +244,8 @@ def _tag(name: str) -> str:
 
 
 def _verbosity() -> str:
-    return "-vvv" if _env("VERBOSE").lower() == "true" else "-v"
+    """-v for the FVT runs when VERBOSE=true."""
+    return "-v" if _env("VERBOSE").lower() == "true" else ""
 
 
 def _activate(missing: str) -> str:
@@ -264,7 +267,7 @@ def init() -> int:
     _say(f"Omnia {_env('OMNIA_REPO')} branch {_env('OMNIA_BRANCH')} at {install_path()}")
     _say(f"Input folders in the project: {', '.join(present) or 'none'}")
     rc, _ = remote("echo SSH connection successful", retry=True)
-    return _mark("initialization", rc)
+    return rc
 
 
 def _mark(name: str, rc: int) -> int:
@@ -276,19 +279,20 @@ def _mark(name: str, rc: int) -> int:
     return rc
 
 
+def _skipped(word: str) -> bool:
+    """Return whether SKIP_STAGES names this word (substring, like the pipeline rules)."""
+    return word in _env("SKIP_STAGES")
+
+
 def require_ready() -> None:
     """Fail fast when a job the cleanups depend on did not pass (its marker is missing).
 
     The cleanup jobs run even after another cleanup failed, so GitLab alone cannot stop them
-    when initialization, the checkout or the NFS check failed.
+    when initialization (the clone, the checks, the NFS check) failed.
     """
-    needed = ["initialization", "setup_environment"]
-    if _env("PIPELINE_MODE") in ("cleanup", "default") and _env("DOMAINS") == "default":
-        needed.append("nfs_check")
-    missing = [n for n in needed if not os.path.isfile(f"{STATUS_DIR}/{n}.ok")]
-    if missing and _env("DRY_RUN").lower() != "true":
-        _fail(f"{', '.join(missing)} did not pass, so nothing was cleaned. HOW TO FIX: fix that "
-              "job (SSH, variables, an unreachable NFS share) and run the pipeline again")
+    if not os.path.isfile(f"{STATUS_DIR}/initialization.ok") and _env("DRY_RUN").lower() != "true":
+        _fail("initialization did not pass, so nothing was cleaned. HOW TO FIX: fix that job "
+              "(SSH, variables, an unreachable NFS share) and run the pipeline again")
 
 
 def checkout() -> int:
@@ -309,61 +313,64 @@ def checkout() -> int:
     env_file = os.path.join(INPUTS_ROOT.format(cluster=cluster), "omnia.env")
     with open(env_file, "rb") as handle:
         rc, _ = remote(f"cat > {shlex.quote(path)}/src/main/omnia.env", stdin=handle.read())
-    return _mark("setup_environment", rc)
+    return rc
+
+
+def initialize() -> int:
+    """The whole initialization stage: checks, commit and omnia.env, the NFS check.
+
+    The marker the cleanup jobs need is left only when every step passed. The NFS check runs
+    only where the NFS shares are emptied later (cleanup or default mode, DOMAINS=default).
+    """
+    for step in (init, checkout):
+        rc = step()
+        if rc:
+            return rc
+    if (_env("PIPELINE_MODE") in ("cleanup", "default") and _env("DOMAINS") == "default"
+            and not _skipped("nfs_check")):
+        rc = nfs_check()
+        if rc:
+            return rc
+    return _mark("initialization", 0)
 
 
 def cleanup(domain: str) -> int:
+    """fvt_<domain> cleanup test: exec, then verify (utils: only its combined cleanup tests)."""
     apply_cluster()
     _domain(domain)
     require_ready()
-    path = install_path()
+    extra = "--marker cleanup" if domain == "utils" else ""
     missing = f"echo 'No Omnia venv on the OIM, nothing to clean for {domain}'; exit 0"
-    if domain in PLAYBOOK_CLEANUP:
-        return _run(f"""set -e
-{_activate(missing)}
-cd {shlex.quote(path)}/src/{domain}/playbooks
-ansible-playbook {domain}.yml --tags cleanup {_verbosity()}
-""", f"cleanup of {domain}")
-    return _run(f"""set -e
-{_activate(missing)}
-cd {shlex.quote(path)}/test/{domain}
-pip install -q -r requirements.txt
-./run_validation.sh fvt_{domain} cleanup exec
-""", f"cleanup of {domain}")
-
-
-NFS_SUITE = "--suite cleanup_nfs_shares"
+    return _fvt(domain, "cleanup", "test", extra, missing)
 
 
 def _nfs_scenario(command: str, marker: str, what: str) -> int:
-    """Run the cleanup_nfs_shares scenario of test/utils on the OIM (nothing to do without a venv)."""
+    """Run the cleanup_nfs_shares tag of test/utils (nothing to do without an Omnia venv)."""
     apply_cluster()
-    path = install_path()
     missing = f"echo 'No Omnia venv on the OIM, no NFS share to {what}'; exit 0"
-    return _run(f"""set -e
-{_activate(missing)}
-cd {shlex.quote(path)}/test/utils
-pip install -q -r requirements.txt
-./run_validation.sh fvt_utils cleanup {command} {NFS_SUITE} --marker {marker}
-""", f"NFS share {what}")
+    return _fvt("utils", "cleanup_nfs_shares", command, f"--marker {marker}", missing)
 
 
 def nfs_check() -> int:
     """Read-only: every Slurm and K8s share of the OIM's storage_config.yml mounts."""
-    return _mark("nfs_check", _nfs_scenario("verify", "sanity", "check"))
-
-
-def cleanup_nfs() -> int:
-    """Empty the Slurm and K8s shares (check all first), then check they are empty."""
-    require_ready()
-    rc = _nfs_scenario("exec", "destructive", "empty")
-    return rc or _nfs_scenario("verify", "destructive", "verify as empty")
+    return _nfs_scenario("verify", "sanity", "check")
 
 
 def cleanup_omnia() -> int:
+    """Empty the Slurm and K8s NFS shares, then omnia.sh --cleanup --all.
+
+    The shares go first because omnia.sh --cleanup --all removes the Omnia venv the NFS
+    scenario runs in. When the shares cannot be emptied the venv is kept, so the next run can
+    try again, and the stage fails.
+    """
     apply_cluster()
     require_ready()
     path = install_path()
+    rc = _nfs_scenario("test", "destructive", "empty")
+    if rc:
+        _say("ERROR: the NFS shares were not emptied, so omnia.sh --cleanup --all was not run "
+             "and the Omnia venv is kept for the next try")
+        return rc
     return _run(f"""set -e
 cd {shlex.quote(path)}/src/main && chmod +x omnia.sh
 ./omnia.sh --cleanup --all --skip-approval
@@ -405,10 +412,19 @@ def _push_folder(source: str, destination: str) -> int:
     """tar the local folder through ssh into destination (a safe path)."""
     tar = subprocess.Popen(["tar", "-C", source, "-czf", "-", "."], stdout=subprocess.PIPE)
     command = [*ssh_command(), f"mkdir -p {shlex.quote(destination)} && "
-                               f"tar -xzf - -C {shlex.quote(destination)}"]
+                               f"tar --no-same-owner -xzf - -C {shlex.quote(destination)}"]
     rc = subprocess.run(command, stdin=tar.stdout, env=_environment(), check=False).returncode
     tar.stdout.close()
     return rc or tar.wait()
+
+
+def _refuse_symlinks(folder: str) -> None:
+    """Fail when an input folder holds a symbolic link (it could point outside the project)."""
+    for base, dirs, files in os.walk(folder):
+        for name in dirs + files:
+            if os.path.islink(os.path.join(base, name)):
+                _fail(f"{os.path.join(base, name)} is a symbolic link. HOW TO FIX: put the real "
+                      "file in the project input folder")
 
 
 def inputs() -> int:
@@ -421,6 +437,8 @@ def inputs() -> int:
     if not folders:
         _fail(f"no domain folder under {root}/. HOW TO FIX: add clusters/{cluster}/inputs/<domain>/")
     failed = []
+    for domain in folders:
+        _refuse_symlinks(os.path.join(root, domain))
     for domain in folders:
         destination = f"{data}/{domain}/input/{project}"
         _say(f"Copy {root}/{domain}/ -> {destination}/")
@@ -440,6 +458,23 @@ def inputs() -> int:
         _say(f"ERROR: copy failed for: {', '.join(failed)}")
         return 1
     _say(f"Inputs copied for: {', '.join(folders)}")
+    return 0
+
+
+def setup_main() -> int:
+    """Stage setup_main: omnia.sh -s (default mode, or ENABLE_SETUP=true), then the inputs.
+
+    The inputs of every deploy domain are copied after omnia.sh -s created the domain folders,
+    in default and deploy mode (not in cleanup mode); SKIP_STAGES=inputs skips only that step.
+    """
+    apply_cluster()
+    mode = _env("PIPELINE_MODE")
+    if mode == "default" or _env("ENABLE_SETUP").lower() == "true":
+        rc = install()
+        if rc:
+            return rc
+    if mode in ("default", "deploy") and not _skipped("inputs"):
+        return inputs()
     return 0
 
 
@@ -549,17 +584,23 @@ def credentials(domain: str) -> int:
                 f"encrypt {name}")
 
 
-def _fvt(domain: str, tag: str, command: str) -> int:
+SAFE_EXTRA = re.compile(r"^(--marker [a-z_]{1,32})?$")
+
+
+def _fvt(domain: str, tag: str, command: str, extra: str = "", missing: str = _NO_VENV) -> int:
+    """Run ./run_validation.sh fvt_<domain> <tag> <command> [--marker <name>] in the Omnia venv."""
     apply_cluster()
     _domain(domain)
     _tag(tag)
+    if not SAFE_EXTRA.match(extra):
+        _fail(f"'{extra}' is not a --marker option of plain characters")
     path = install_path()
     return _run(f"""set -e
-{_activate(_NO_VENV)}
+{_activate(missing)}
 cd {shlex.quote(path)}/test/{domain}
 pip install -q -r requirements.txt
-./run_validation.sh fvt_{domain} {tag} {command}
-""", f"fvt_{domain} {tag} {command}")
+./run_validation.sh fvt_{domain} {tag} {command} {extra} {_verbosity()}
+""", f"fvt_{domain} {tag} {command} {extra}".strip())
 
 
 def deploy(domain: str) -> int:
@@ -717,8 +758,9 @@ def summary() -> int:
 def main(argv: List[str]) -> int:
     one = {"cleanup": cleanup, "credentials": credentials, "deploy": deploy,
            "verify": verify_domain}
-    none = {"init": init, "checkout": checkout, "cleanup-omnia": cleanup_omnia,
-            "nfs-check": nfs_check, "cleanup-nfs": cleanup_nfs, "install": install, "inputs": inputs, "summary": summary}
+    none = {"initialize": initialize, "init": init, "checkout": checkout,
+            "nfs-check": nfs_check, "cleanup-omnia": cleanup_omnia, "setup-main": setup_main,
+            "install": install, "inputs": inputs, "summary": summary}
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
         return 0

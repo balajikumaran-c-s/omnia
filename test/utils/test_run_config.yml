@@ -87,7 +87,7 @@ scenarios:
     sync_input: false
 
   # Destructive: empties the Slurm and K8s NFS shares. Never part of a batch; run it with
-  # ./run_validation.sh fvt_utils cleanup exec --suite cleanup_nfs_shares --marker destructive
+  # ./run_validation.sh fvt_utils cleanup_nfs_shares test --marker destructive
   cleanup_nfs_shares:
     order: 8
     run: false

@@ -24,30 +24,33 @@ project, together with the cluster inputs, and sets the CI/CD variables.
 
 For every cluster, in this order:
 
-1. **Initialization**: checks the CI/CD variables and the OIM host key, clones Omnia on the OIM
-   and takes the pipeline helpers (`pipeline_ci.py`, `library/`) from that clone, then checks the
-   input folders and the SSH connection.
-2. **Cleanup**: one stage per domain (`fvt_<domain> cleanup exec`), then `omnia.sh --cleanup
-   --all`. Between them the Slurm and Kubernetes NFS shares are emptied by the `test/utils` FVT
-   scenario `cleanup_nfs_shares`. Every cleanup runs, even
-   after one failed. If any failed, nothing is installed and the pipeline ends red.
-3. **Install**: `omnia.sh -s` creates the Omnia venv and runs every `domain-init`, then
-   `fvt_main verify` tests it.
-4. **Inputs**: one stage copies `clusters/<cluster>/inputs/<domain>/` of every domain to
-   `<data>/<domain>/input/<project>/` on the OIM, and the catalog.
-5. **Domains**: repo_manager, image_build_manager, discovery (optional), orchestrator and
-   telemetry. Each fetches its credentials from OpenBao, then runs its FVT tags in exec mode in
-   the Omnia venv. Each has a test stage (`verify`) when `TEST_MODE=true`.
-6. **Summary**: a table of every job and one email with the verdict, the links and the test
+1. **Initialization** (one stage): checks the CI/CD variables and the OIM host key, clones Omnia on
+   the OIM and takes the pipeline helpers (`pipeline_ci.py`, `library/`) from that clone, checks
+   the input folders and SSH, records the commit, copies `omnia.env` and, before any cleanup,
+   checks that the Slurm and Kubernetes NFS shares can be mounted.
+2. **Cleanup**: one stage per domain, each running `fvt_<domain> cleanup test` (the exec step, then
+   its verify step). Every cleanup runs, even after one failed. Then the `cleanup_omnia` stage
+   empties the Slurm and Kubernetes NFS shares (the `test/utils` scenario `cleanup_nfs_shares`) and
+   runs `omnia.sh --cleanup --all`. If any cleanup failed, nothing is installed and the pipeline
+   ends red.
+3. **Install** (`setup_main`, one stage): `omnia.sh -s` creates the Omnia venv and runs every
+   `domain-init`, then the inputs of every domain (`clusters/<cluster>/inputs/<domain>/`) and the
+   catalog are copied to `<data>/<domain>/input/<project>/` on the OIM. `fvt_main verify` tests the
+   install in the next stage.
+4. **Domains**: repo_manager, image_build_manager, discovery (optional), orchestrator and
+   telemetry. A domain stage fetches its credentials from OpenBao and runs every FVT tag in exec
+   mode in the Omnia venv; the next stage verifies it (`TEST_MODE=true`). A failed exec stops the
+   pipeline, a failed verify does not stop the next domain.
+5. **Summary**: a table of every job and one email with the verdict, the links and the test
    reports.
 
 ```
-initialization > setup_environment > nfs_check > cleanup_<domain> ... > cleanup_nfs > cleanup_omnia
-   > setup_main > test_main_installation > inputs > <domain> > test_<domain> ... > summary
+initialization > cleanup_<domain> ... > cleanup_omnia > setup_main > test_main_installation
+   > <domain> > test_<domain> ... > summary
 ```
 
 The modes choose the part that runs: `default` is everything, `deploy` skips the cleanup and the
-install (the Omnia venv must exist), `cleanup` stops after the cleanup. See
+install and only copies the inputs (the Omnia venv must exist), `cleanup` stops after the cleanup. See
 [docs/PIPELINE_MODES.md](docs/PIPELINE_MODES.md).
 
 Besides the cluster pipeline there are two more, selected by a project variable:
@@ -138,7 +141,7 @@ clusters/<cluster>/
 | `enable_discovery` | `false` | Run the discovery stages |
 | `dry_run` | `false` | Print what would run on the OIM, change nothing |
 | `verbose` | `false` | Ansible verbosity `-vvv` instead of `-v` (utils cleanup) |
-| `skip_stages` | `""` | Words of stages to skip, for example `telemetry,nfs_check` (a domain word skips its cleanup, deploy and test) |
+| `skip_stages` | `""` | Words of stages to skip, for example `telemetry,nfs_check` (a domain word skips its cleanup, deploy and test; `nfs_check` and `inputs` skip that step inside `initialization` and `setup_main`) |
 | `deploy_tags.<domain>` | per domain | Comma list of FVT tags run in exec mode (variable `<DOMAIN>_TAGS`) |
 | `test_commands.<domain>` | `./run_validation.sh fvt_<domain> verify` | The verify command (variable `TEST_<DOMAIN>_CMD`) |
 
@@ -157,8 +160,8 @@ All settings and variables: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 - **OpenBao:** a JWT login, secrets are written to the OIM with mode 600 and vault-encrypted;
   only field names reach the logs. TLS is verified with `BAO_CA_CERT`. The default stays
   unverified, with a warning, as it always was.
-- **NFS:** the shares are emptied by `test/utils` (`fvt_utils cleanup --suite cleanup_nfs_shares`),
-  only with `--marker destructive`, and nothing is deleted unless every share was mounted
+- **NFS:** the shares are emptied by `test/utils` (`fvt_utils cleanup_nfs_shares test --marker destructive`,
+  its own tag, never part of the utils cleanup), and nothing is deleted unless every share was mounted
   read-only first. System directories and the Omnia checkout are never emptied. See
   [docs/CLUSTER_PIPELINE.md](docs/CLUSTER_PIPELINE.md#nfs-share-cleanup).
 - **Concurrency:** one pipeline per cluster at a time (`resource_group`); runner failures are

@@ -13,39 +13,44 @@ For the settings see [CONFIGURATION.md](CONFIGURATION.md), for the modes
 ## The flow
 
 ```
- initialization        clone Omnia on the OIM, take the helpers from it; variables, inputs, SSH
- setup_environment     record the commit, copy omnia.env; marker for the cleanups
- nfs_check             (DOMAINS=default) every NFS share mounts read-only (test/utils)
- cleanup_build_stream  fvt_build_stream cleanup exec
- cleanup_utils         utils playbook --tags cleanup            (failure tolerated)
- cleanup_telemetry     fvt_telemetry cleanup exec
- cleanup_orchestrator  fvt_orchestrator cleanup exec
- cleanup_discovery     fvt_discovery cleanup exec               (failure tolerated)
+ initialization        ONE stage: clone Omnia on the OIM and take the helpers from it; checks of
+                       the variables, the host key, the inputs and SSH; the commit and omnia.env;
+                       (DOMAINS=default) every NFS share mounts read-only
+ cleanup_build_stream  fvt_build_stream cleanup test      (exec, then verify)
+ cleanup_utils         fvt_utils cleanup test --marker cleanup     (failure tolerated)
+ cleanup_telemetry     fvt_telemetry cleanup test
+ cleanup_orchestrator  fvt_orchestrator cleanup test
+ cleanup_discovery     fvt_discovery cleanup test               (failure tolerated)
  cleanup_image_build_manager, cleanup_repo_manager   the same
- cleanup_nfs           (DOMAINS=default) empty the Slurm and K8s NFS shares (test/utils)
- cleanup_omnia         omnia.sh --cleanup --all
- setup_main            omnia.sh -s: the Omnia venv and every domain-init
+ cleanup_omnia         ONE stage: empty the Slurm and K8s NFS shares (test/utils), then
+                       omnia.sh --cleanup --all
+ setup_main            ONE stage: omnia.sh -s, then the inputs of every domain and the catalog
  test_main_installation  fvt_main verify
- inputs                ONE stage: the inputs of every domain, and the catalog
- <domain> + test_<domain>   repo_manager, image_build_manager, discovery, orchestrator, telemetry
+ <domain>              exec of every FVT tag: repo_manager, image_build_manager, discovery,
+                       orchestrator, telemetry (one stage each)
+ test_<domain>         verify of that domain (the next stage)
  summary               job table, the test reports, one email
 ```
 
 | Stage | `default` | `deploy` | `cleanup` | Condition |
 |---|---|---|---|---|
-| initialization, setup_environment | yes | yes | yes | |
-| nfs_check | yes | | yes | `DOMAINS=default` |
-| cleanup_nfs | yes | | yes | `DOMAINS=default` |
+| initialization | yes | yes | yes | the NFS check only with `DOMAINS=default` in `default` and `cleanup` |
 | cleanup_\<domain\> | yes | | yes | the domain is selected |
 | cleanup_omnia | yes | | yes | `DOMAINS=default` |
-| setup_main | yes | with `ENABLE_SETUP=true` | with `ENABLE_SETUP=true` | |
+| setup_main | yes | inputs only | with `ENABLE_SETUP=true` (install only) | install in `default` or with `ENABLE_SETUP=true`; inputs in `default` and `deploy` |
 | test_main_installation | yes | yes | | `TEST_MODE=true` |
-| inputs | yes | yes | | |
 | \<domain\> | yes | yes | | the domain is selected (discovery: `ENABLE_DISCOVERY=true`) |
-| test_\<domain\> | yes | yes | | `TEST_MODE=true`; a failed test does not stop the next domain |
+| test_\<domain\> | yes | yes | | `TEST_MODE=true` |
 | summary | yes | yes | yes | always runs |
 
 Any stage can be skipped with `SKIP_STAGES` (see [CONFIGURATION.md](CONFIGURATION.md)).
+`nfs_check` skips the NFS check inside `initialization`, and `inputs` skips the input copy inside
+`setup_main`.
+
+**What stops what:**
+- A failed domain exec stops the pipeline: its verify stage and the later domains are skipped.
+- A failed verify (`test_<domain>`) does not stop the next domain.
+- A failed cleanup does not stop the other cleanups, but nothing is installed after it (below).
 
 ---
 
@@ -59,13 +64,15 @@ installed or deployed.
 - Every later job keeps GitLab's default `when: on_success` and has no `needs`, so GitLab skips
   it when any job of an earlier stage failed. The pipeline ends red and the OIM is not
   reinstalled.
-- `always` would also run the cleanups after a failed initialization, clone or NFS check. So
-  each of those jobs leaves a marker file (`pipeline_job_status/<job>.ok`, an artifact) when it
-  passed, and every cleanup job first checks the markers and fails at once if one is missing.
-  An unreachable NFS share therefore stops the cleanups before anything is deleted.
-- `cleanup_utils` and `cleanup_discovery` are tolerated (`allow_failure: true`): utils has no
-  FVT suite and the old discovery cleanup ignored failures. A failure of these two does not stop
-  the install.
+- `always` would also run the cleanups after a failed initialization. So the initialization
+  job leaves a marker file (`pipeline_job_status/initialization.ok`, an artifact) only when every
+  step passed (the clone, the checks, the NFS check), and every cleanup job first checks the marker
+  and fails at once if it is missing. An unreachable NFS share therefore stops the cleanups before
+  anything is deleted.
+- `cleanup_utils` and `cleanup_discovery` are tolerated (`allow_failure: true`): the old discovery
+  cleanup ignored failures. A failure of these two does not stop the install.
+- Each cleanup stage runs `fvt_<domain> cleanup test`: the exec step, then its verify step. If the
+  exec step fails the verify step does not run.
 
 A cleanup on an OIM without an Omnia venv (the very first run) finds nothing to clean and passes.
 
@@ -81,14 +88,15 @@ exist before the clone. All of them need the cluster variables
 
 | Command | What it does |
 |---|---|
-| `init` | Checks `CLUSTER`, the cluster variables, `OMNIA_REPO` and `OMNIA_BRANCH`, `OMNIA_INSTALL_PATH`, the host key policy, `clusters/<cluster>/inputs/omnia.env` and the SSH connection (retried). Leaves the `initialization` marker |
-| `checkout` | Records the commit of the clone (`actual_commit_sha.txt`) and copies `omnia.env` into it. Leaves the `setup_environment` marker |
-| `nfs-check` | Mounts every Slurm and K8s share of the cluster's `storage_config.yml` read-only and unmounts it. Leaves the `nfs_check` marker |
-| `cleanup <domain>` | Checks the markers, then `fvt_<domain> cleanup exec` in the Omnia venv (utils: `ansible-playbook utils.yml --tags cleanup`) |
-| `cleanup-nfs` | Checks the markers, then `fvt_utils cleanup exec --suite cleanup_nfs_shares --marker destructive` and `verify` with the same marker (shares empty) |
-| `cleanup-omnia` | Checks the markers, runs `omnia.sh --cleanup --all --skip-approval` |
+| `initialize` | The whole initialization stage: `init`, `checkout` and, in `default` and `cleanup` mode with `DOMAINS=default`, `nfs-check`. Leaves the `initialization` marker only when all of them passed |
+| `init` | Checks `CLUSTER`, the cluster variables, `OMNIA_REPO` and `OMNIA_BRANCH`, `OMNIA_INSTALL_PATH`, the host key policy, `clusters/<cluster>/inputs/omnia.env` and the SSH connection (retried) |
+| `checkout` | Records the commit of the clone (`actual_commit_sha.txt`) and copies `omnia.env` into it |
+| `nfs-check` | `fvt_utils cleanup_nfs_shares verify --marker sanity`: every Slurm and K8s share of the OIM's `storage_config.yml` mounts read-only |
+| `cleanup <domain>` | Checks the marker, then `fvt_<domain> cleanup test` (exec, then verify) in the Omnia venv; utils: `fvt_utils cleanup test --marker cleanup` |
+| `cleanup-omnia` | Checks the marker, empties the NFS shares (`fvt_utils cleanup_nfs_shares test --marker destructive`), then runs `omnia.sh --cleanup --all --skip-approval`. If the shares are not emptied the second step is not run and the Omnia venv stays |
+| `setup-main` | `install` (in `default` mode or with `ENABLE_SETUP=true`), then `inputs` (in `default` and `deploy` mode) |
 | `install` | `omnia.sh -s`, then checks that the venv activates |
-| `inputs` | Copies the inputs (below) |
+| `inputs` | Copies the inputs (below); refuses an input folder that holds a symbolic link |
 | `credentials <domain>` | Fetches the domain credentials from OpenBao and encrypts them on the OIM |
 | `deploy <domain>` | `credentials`, then every FVT tag in exec mode |
 | `stage <domain> <tag>` | `fvt_<domain> <tag> exec` |
@@ -102,8 +110,8 @@ Domain and tag names are checked against fixed lists and patterns before they re
 
 ## Inputs
 
-The `inputs` stage runs after `omnia.sh -s`, which has created the domain folders and their
-default inputs. For every deploy domain (repo_manager, image_build_manager, discovery, orchestrator,
+The inputs are copied by the `setup_main` stage after `omnia.sh -s` (in `default` and `deploy` mode),
+which has created the domain folders and their default inputs. For every deploy domain (repo_manager, image_build_manager, discovery, orchestrator,
 telemetry) that has a folder `clusters/<cluster>/inputs/<domain>/` in the
 project, its content is copied to `<OMNIA_DATA_PATH>/<domain>/input/<OMNIA_PROJECT_NAME>/` on the
 OIM (both resolved from the Omnia venv). The catalog `clusters/<cluster>/catalogs/catalog_rhel.json`
@@ -147,29 +155,31 @@ OpenBao secret `test_<domain>`, which wins), encrypts them, then runs the comman
 
 ## NFS share cleanup
 
-The shares are emptied by the `cleanup_nfs_shares` scenario of the utils FVT (`test/utils`), so
-the same cleanup can be run by hand on the OIM:
+The shares are emptied by the `cleanup_nfs_shares` tag of the utils FVT (`test/utils`), so the
+same cleanup can be run by hand on the OIM:
 
 ```bash
 cd test/utils
-./run_validation.sh fvt_utils cleanup verify --suite cleanup_nfs_shares --marker sanity        # read-only check
-./run_validation.sh fvt_utils cleanup exec   --suite cleanup_nfs_shares --marker destructive   # empty
-./run_validation.sh fvt_utils cleanup verify --suite cleanup_nfs_shares --marker destructive   # now empty
+./run_validation.sh fvt_utils cleanup_nfs_shares verify --marker sanity        # read-only check
+./run_validation.sh fvt_utils cleanup_nfs_shares test   --marker destructive   # empty, then check
 ```
+
+`cleanup_nfs_shares` is a tag of its own and is explicit-only, so the utils cleanup
+(`fvt_utils cleanup`, stage `cleanup_utils`) never touches the NFS shares.
 
 It empties the mounts `nfs_slurm` and `nfs_k8s` (`nfs_shares` in `test/utils/test_config.yml`) of
 the `storage_config.yml` in the orchestrator input folder of the OIM
 (`<OMNIA_DATA_PATH>/orchestrator/input/<OMNIA_PROJECT_NAME>/`, or the file in `nfs_storage_config`).
-The pipeline runs it after the domain cleanups and before `cleanup_omnia`, because
-`omnia.sh --cleanup --all` removes the Omnia venv the scenario runs in. On an OIM without an Omnia venv
-(or without that file, or without NFS mounts) there is nothing to empty and the stage passes.
+In the pipeline it runs in the `cleanup_omnia` stage, before `omnia.sh --cleanup --all`, because
+that removes the Omnia venv the scenario runs in. On an OIM without an Omnia venv (or without that
+file, or without NFS mounts) there is nothing to empty and the step passes.
 
-1. `nfs_check` (read-only, before any cleanup): every share is mounted read-only and unmounted.
-   A share that cannot be reached fails the stage, so the cleanups after it do not run.
-2. `cleanup_nfs`: every share is checked again first, then each one is mounted on a new private
-   folder, emptied completely (the export itself stays) and unmounted. A connected client can
-   recreate files, so a share is emptied again up to six times. A second run checks that
-   no entry is left.
+1. The check in `initialization` (read-only): every share is mounted read-only and unmounted. A
+   share that cannot be reached fails the stage, so no cleanup runs.
+2. The step in `cleanup_omnia`: every share is checked again first, then each one is mounted on a
+   new private folder, emptied completely (the export itself stays) and unmounted. A connected
+   client can recreate files, so a share is emptied again up to six times. Then a check confirms
+   that no entry is left. If this fails, `omnia.sh --cleanup --all` is not run.
 
 Safety rules (`test/utils/library/functions/nfs_func.py`): the emptying tests run only with
 `--marker destructive`; no shell is used; the source must be an IPv4
@@ -225,11 +235,11 @@ banner in the log but does not change the result of the pipeline.
 | Inline shell in the YAML, repeated per domain | `pipeline_ci.py`; the YAML is generated |
 | `StrictHostKeyChecking=no`, `known_hosts` removed | Host key required |
 | `TARGET_PASS` in the `target.env` artifact | `SSHPASS` only, no file |
-| `setup_environment` cloned and ran `omnia.sh -s` | `setup_environment` clones; `setup_main` installs after the cleanup |
-| Cleanup by playbook tags | `fvt_<domain> cleanup exec` |
+| `initialization`, `setup_environment` and `nfs_check` were three stages, `inputs` and `cleanup_nfs` stages of their own | One `initialization` stage (clone, checks, NFS check); `setup_main` installs after the cleanup |
+| Cleanup by playbook tags | `fvt_<domain> cleanup test` (exec, then verify) |
 | Cleanup failure stopped the pipeline immediately | All cleanups run, then it stops without installing |
-| NFS shares kept their data | Slurm and K8s shares emptied by `cleanup_nfs` (test/utils) |
-| Inputs copied inside each domain job | One `inputs` stage |
+| NFS shares kept their data | Slurm and K8s shares emptied in `cleanup_omnia` (test/utils) |
+| Inputs copied inside each domain job | Copied once, in the `setup_main` stage |
 | `<DOMAIN>_TAGS` were ansible tags | FVT tags in exec mode |
 | A separate test venv per domain | The test requirements go into the Omnia venv |
 | No concurrency limit | One pipeline per cluster |

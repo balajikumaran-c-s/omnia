@@ -134,10 +134,9 @@ Each cluster runs as a completely independent child pipeline. If one cluster fai
 Parent Pipeline (.gitlab-ci.yml)
     ↓
     ├─→ Child Pipeline 1 (.gitlab-ci-cluster.yml) for cluster1
-    │   ├─ initialization, setup_environment, nfs_check
-    │   ├─ cleanup_<domains>, cleanup_nfs (Slurm/K8s shares), cleanup_omnia
-    │   ├─ setup_main (omnia.sh -s), test_main_installation
-    │   ├─ inputs (all domains)
+    │   ├─ initialization (clone, checks, NFS check)
+    │   ├─ cleanup_<domains> (exec, then verify), cleanup_omnia (Slurm/K8s shares, omnia.sh --cleanup --all)
+    │   ├─ setup_main (omnia.sh -s, then the inputs of all domains), test_main_installation
     │   ├─ <domains> (exec mode) and test_<domains>
     │   └─ summary (table + email)
     │

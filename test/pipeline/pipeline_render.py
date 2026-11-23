@@ -67,13 +67,16 @@ INTRO = """
 #   PIPELINE_MODE=cleanup  ->  cleanups only
 #
 # Flow of the default mode:
-#   initialization (clone Omnia on the OIM, take the helpers from it) -> setup_environment
-#   -> nfs_check -> cleanup_<domain> ...
-#   -> cleanup_nfs (the Slurm/K8s NFS shares, test/utils) -> cleanup_omnia (omnia.sh --cleanup --all)
-#   -> setup_main (omnia.sh -s) -> test_main_installation -> inputs (all domains, one stage)
-#   -> <domain> (exec mode) -> test_<domain> (verify) -> summary
+#   initialization: clone Omnia on the OIM, take the helpers from it, checks, commit and
+#                   omnia.env, NFS check (one stage)
+#   cleanup_<domain> ...: fvt_<domain> cleanup test (exec, then verify), one stage per domain
+#   cleanup_omnia: the Slurm/K8s NFS shares (test/utils), then omnia.sh --cleanup --all
+#   setup_main: omnia.sh -s, then the inputs of every domain (one stage)
+#   test_main_installation -> <domain> (exec of every tag) -> test_<domain> (verify) ... -> summary
 #
-# A failed cleanup does not stop the other cleanups; nothing is installed after it.
+# A failed cleanup does not stop the other cleanups; nothing is installed after it. A failed
+# domain exec stops the pipeline (its verify and the later domains are skipped); a failed verify
+# does not stop the next domain.
 #
 # Variables: DOMAINS (default, or a regex such as repo_manager|orchestrator), SKIP_STAGES,
 # ENABLE_SETUP, ENABLE_DISCOVERY, TEST_MODE, DRY_RUN, VERBOSE, <DOMAIN>_TAGS (comma list of FVT
@@ -223,9 +226,8 @@ def _job(name: str, stage: str, script: Sequence[str], conditions: Sequence[str]
 
 def render() -> str:
     """Return the text of .gitlab-ci-cluster.yml."""
-    stages = ["initialization", "setup_environment", "nfs_check",
-              *(f"cleanup_{d}" for d in CLEANUP_ORDER), "cleanup_nfs", "cleanup_omnia", "setup_main",
-              "test_main_installation", "inputs",
+    stages = ["initialization", *(f"cleanup_{d}" for d in CLEANUP_ORDER), "cleanup_omnia",
+              "setup_main", "test_main_installation",
               *(s for d in DEPLOY_ORDER for s in (d, f"test_{d}")), "summary"]
     out = [LICENSE + INTRO, "workflow:", "  rules:",
            "    - if: '$CI_PIPELINE_SOURCE == \"parent_pipeline\"'", "      when: always", "",
@@ -240,37 +242,25 @@ def render() -> str:
             "      - pipeline_job_status/", ""]
 
     jobs: List[List[str]] = [
-        _job("initialization", "initialization", ["init"], [ANY_MODE], allow_failure=False,
-             artifacts=["pipeline_job_status/", "ci_tools/"], python_blocks=[BOOTSTRAP]),
-        _job("setup_environment", "setup_environment", ["checkout"], [ANY_MODE],
-             needs=["initialization"],
-             artifacts=["pipeline_job_status/", "actual_commit_sha.txt"]),
-        _job("nfs_check", "nfs_check", ["nfs-check"],
-             [f'{CLEANUP_MODE} && $DOMAINS == "default"'], needs=["initialization",
-             "setup_environment"], skip="nfs_check", artifacts=["pipeline_job_status/"]),
+        _job("initialization", "initialization", ["initialize"], [ANY_MODE], allow_failure=False,
+             artifacts=["pipeline_job_status/", "ci_tools/", "actual_commit_sha.txt"],
+             python_blocks=[BOOTSTRAP]),
     ]
     previous: List[str] = []
     for domain in CLEANUP_ORDER:
         name = f"cleanup_{domain}"
         jobs.append(_job(name, name, [f"cleanup {domain}"],
                          [f"{CLEANUP_MODE} && {_domain_condition(domain)}"], when="always",
-                         needs=["initialization", "setup_environment"], optional=list(previous),
+                         needs=["initialization"], optional=list(previous),
                          allow_failure=domain in TOLERATED_CLEANUPS, skip=domain))
         previous.append(name)
-    jobs.append(_job("cleanup_nfs", "cleanup_nfs", ["cleanup-nfs"],
-                     [f'{CLEANUP_MODE} && $DOMAINS == "default"'], when="always",
-                     needs=["initialization", "setup_environment"], optional=list(previous),
-                     allow_failure=False))
-    previous.append("cleanup_nfs")
     jobs.append(_job("cleanup_omnia", "cleanup_omnia", ["cleanup-omnia"],
                      [f'{CLEANUP_MODE} && $DOMAINS == "default"'], when="always",
-                     needs=["initialization", "setup_environment"], optional=list(previous),
-                     allow_failure=False))
-    jobs.append(_job("setup_main", "setup_main", ["install"],
-                     ['$PIPELINE_MODE == "default"', '$ENABLE_SETUP == "true"']))
+                     needs=["initialization"], optional=list(previous), allow_failure=False))
+    jobs.append(_job("setup_main", "setup_main", ["setup-main"],
+                     ['$ENABLE_SETUP == "true"', DEPLOY_MODE]))
     jobs.append(_job("test_main_installation", "test_main_installation", ["verify main"],
                      [f'{DEPLOY_MODE} && $TEST_MODE == "true"']))
-    jobs.append(_job("inputs", "inputs", ["inputs"], [DEPLOY_MODE]))
     for domain in DEPLOY_ORDER:
         extra = '$ENABLE_DISCOVERY == "true" && ' if domain == "discovery" else ""
         jobs.append(_job(domain, domain, [f"deploy {domain}"],
