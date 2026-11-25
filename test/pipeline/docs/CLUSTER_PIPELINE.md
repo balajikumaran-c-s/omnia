@@ -26,7 +26,7 @@ For the settings see [CONFIGURATION.md](CONFIGURATION.md), for the modes
                        omnia.sh --cleanup --all
  setup_main            ONE stage: omnia.sh -s, then the inputs of every domain and the catalog
  test_main_installation  fvt_main verify
- <domain>              exec of every FVT tag: repo_manager, image_build_manager, discovery,
+ <domain>              omnia.sh --run, tag by tag: repo_manager, image_build_manager, discovery,
                        orchestrator, telemetry (one stage each)
  test_<domain>         verify of that domain (the next stage)
  summary               job table, the test reports, one email
@@ -99,7 +99,7 @@ exist before the clone. All of them need the cluster variables
 | `install` | `omnia.sh -s`, then checks that the venv activates |
 | `inputs` | Copies the inputs (below); refuses an input folder that holds a symbolic link |
 | `credentials <domain>` | Fetches the domain credentials from OpenBao and encrypts them on the OIM |
-| `deploy <domain>` | `credentials`, then every FVT tag in exec mode |
+| `deploy <domain>` | `credentials`, then every playbook tag with `./omnia.sh --run <domain> --tags <tag>` |
 | `stage <domain> <tag>` | `fvt_<domain> <tag> exec` |
 | `verify <domain\|main>` | The test config and credentials, then the verify command |
 | `summary` | Prints the job table, fetches the test reports, sends the email |
@@ -144,17 +144,13 @@ catalog) and `inputs/test/<domain>/`; a project with the older `inputs/<domain>/
 
 ## Domain stages
 
-`deploy <domain>` fetches the credentials, then runs these FVT tags in order, in exec mode, in
-the Omnia venv (the test requirements of the domain are installed into the venv first), and
-stops at the first failure:
+`deploy <domain>` fetches the credentials, then runs the playbook tags of the domain one by one,
+in ONE stage, each as `./omnia.sh --run <domain> --tags <tag>` in the Omnia venv, and stops at the
+first failure. The verify stage that follows still runs `./run_validation.sh fvt_<domain> verify`:
 
 **With tags or without.** `deploy_tags.<domain>` in the config (variable `<DOMAIN>_TAGS`, a comma
-list such as `prepare,execute`) runs exactly those tags, one `./run_validation.sh fvt_<domain>
-<tag> exec` each; every tag is `ansible-playbook <domain>.yml --tags <tag>`. With no tags the
-**complete playbook** runs once without `--tags`: `./run_validation.sh fvt_<domain> exec` (no tag;
-it runs `fvt/test_playbook.py`, which every domain with a playbook has: repo_manager,
-image_build_manager, discovery, orchestrator, telemetry, build_stream; utils has none because
-`utils.yml` is meant to run one tag at a time). A tag runs as `./run_validation.sh fvt_<domain> <tag> exec`.
+list such as `prepare,execute`) runs exactly those tags, one `./omnia.sh --run <domain> --tags <tag>` each. With no list the
+domain's default tags below run in order.
 
 **Verbose.** `VERBOSE=true` adds `-v --ansible-verbosity 3` to every FVT call (pytest `-v` and
 `ansible-playbook -vvv`). `--ansible-verbosity <0-4>` is a runner option of every domain and sets
@@ -299,7 +295,7 @@ cleanup, and the summary attaches them with the reports of the later stages.
 | Cleanup failure stopped the pipeline immediately | All cleanups run, then it stops without installing |
 | NFS shares kept their data | Slurm and K8s shares emptied in `cleanup_omnia` (test/utils) |
 | Inputs copied inside each domain job | Copied once, in the `setup_main` stage |
-| `<DOMAIN>_TAGS` were ansible tags | FVT tags in exec mode |
+| `<DOMAIN>_TAGS` were ansible tags | Playbook tags run one by one with `omnia.sh --run` |
 | A separate test venv per domain | The test requirements go into the Omnia venv |
 | No concurrency limit | One pipeline per cluster |
 | Plain email | Email in the SVT layout |

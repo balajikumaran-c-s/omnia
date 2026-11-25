@@ -137,7 +137,7 @@ Parent Pipeline (.gitlab-ci.yml)
     │   ├─ initialization (clone, checks, NFS check)
     │   ├─ cleanup_<domains> (exec, then verify), cleanup_omnia (Slurm/K8s shares, omnia.sh --cleanup --all)
     │   ├─ setup_main (omnia.sh -s, then the inputs of all domains), test_main_installation
-    │   ├─ <domains> (exec mode) and test_<domains>
+    │   ├─ <domains> (omnia.sh --run, tag by tag) and test_<domains>
     │   └─ summary (table + email)
     │
     ├─→ Child Pipeline 2 (.gitlab-ci-cluster.yml) for cluster2

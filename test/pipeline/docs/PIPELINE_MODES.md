@@ -278,7 +278,7 @@ Legend:
 | **cleanup_omnia** | Empties the Slurm and K8s NFS shares (`fvt_utils cleanup_nfs_shares test --marker destructive`), then runs `omnia.sh --cleanup --all`. If the shares are not emptied the second step is not run. Only runs when `DOMAINS=default` |
 | **setup_main** | Runs `omnia.sh -s` (the Omnia venv and every `domain-init`) in `default` mode or with `ENABLE_SETUP=true`, then copies `clusters/<name>/inputs/src/<domain>/` of every deploy domain and the catalog to the OIM in `default` and `deploy` mode |
 | **test_main_installation** | Runs `run_validation.sh fvt_main verify` in the Omnia venv |
-| **\<domain\>** | Fetches the domain credentials from OpenBao (JWT auth), encrypts them with ansible-vault, runs every FVT tag in exec mode. A failure stops the pipeline |
+| **\<domain\>** | Fetches the domain credentials from OpenBao (JWT auth), encrypts them with ansible-vault, runs every playbook tag one by one with `./omnia.sh --run <domain> --tags <tag>`. A failure stops the pipeline |
 | **test_\<domain\>** | Copies the test config and credentials to the OIM and runs the verify command in the Omnia venv. A failure does not stop the next domain; it does not run when the domain exec failed |
 | **discovery** | As `<domain>`, after image_build_manager. Only runs when `ENABLE_DISCOVERY=true` and the domain matches |
 | **summary** | Generates a pipeline report and sends email notification |

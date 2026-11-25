@@ -190,8 +190,8 @@ cluster1:
     skip_stages: ""
 
   # ---- Deploy-Time Tags ----
-  # Cluster pipeline: a comma-separated list of FVT tags, run in order in exec mode
-  #   (./run_validation.sh fvt_<domain> <tag> exec). Leave empty to run the default tags:
+  # Cluster pipeline: a comma-separated list of playbook tags, run in order in ONE stage
+  #   (./omnia.sh --run <domain> --tags <tag>, one call per tag). Leave empty to run the default tags:
   #     repo_manager: precheck,prepare,execute,status
   #     image_build_manager: validate,prepare,build
   #     discovery: precheck,validate,execute

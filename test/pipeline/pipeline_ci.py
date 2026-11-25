@@ -35,7 +35,8 @@ over SSH:
     install               omnia.sh -s only (recreates the Omnia venv, runs every domain-init)
     inputs                the input copy only
     credentials <domain>  OpenBao credentials of the domain, vault-encrypted on the OIM
-    deploy <domain>       credentials, then every FVT tag in exec mode (<DOMAIN>_TAGS overrides)
+    deploy <domain>       credentials, then every playbook tag, one by one, with
+                          ./omnia.sh --run <domain> --tags <tag> (<DOMAIN>_TAGS overrides)
     stage <domain> <tag>  fvt_<domain> <tag> exec
     verify <domain|main>  test config and credentials, then TEST_<DOMAIN>_CMD (default
                           ./run_validation.sh fvt_<domain> verify)
@@ -808,8 +809,24 @@ cd {shlex.quote(path)}/test/{domain}
 """, f"fvt_{domain} {tag} {command} {extra}".replace("  ", " ").strip())
 
 
+def _omnia_run(domain: str, tag: str) -> int:
+    """Run ./omnia.sh --run <domain> --tags <tag> from the Omnia checkout, in the Omnia venv."""
+    apply_cluster()
+    _domain(domain)
+    path = install_path()
+    return _run(f"""set -e
+{_activate(_NO_VENV)}
+cd {shlex.quote(path)}/src/main && chmod +x omnia.sh
+./omnia.sh --run {domain} --tags {_tag(tag)}
+""", f"omnia.sh --run {domain} --tags {tag}")
+
+
 def deploy(domain: str) -> int:
-    """Domain stage: its credentials, then every FVT tag in exec mode (DOMAIN_TAGS overrides)."""
+    """Domain stage: its credentials, then its playbook tags one by one with omnia.sh --run.
+
+    The tags are the domain's DOMAIN_STEPS, or the comma list of <DOMAIN>_TAGS. The first tag that
+    fails stops the stage. The verify stage afterwards still goes through run_validation.
+    """
     apply_cluster()
     _domain(domain)
     require_cleanups_ok()
@@ -819,12 +836,9 @@ def deploy(domain: str) -> int:
     if rc:
         return rc
     tags = [t.strip() for t in _env(f"{domain.upper()}_TAGS").split(",") if t.strip()]
-    if not tags:
-        _say(f"===== {domain}: the complete playbook (no tags) =====")
-        return _fvt(domain, "", "exec")
-    for tag in tags:
-        _say(f"===== {domain}: {tag} (exec) =====")
-        rc = _fvt(domain, _tag(tag), "exec")
+    for tag in tags or DOMAIN_STEPS[domain]:
+        _say(f"===== {domain}: {tag} (omnia.sh --run {domain} --tags {tag}) =====")
+        rc = _omnia_run(domain, tag)
         if rc:
             return rc
     return 0

@@ -27,9 +27,9 @@ Failure rules:
   success, the later jobs wait for the earlier stages) and only ``summary`` runs.
 * A cleanup fails -> the cleanup jobs are ``allow_failure`` and each needs only initialization
   and the earlier cleanups, so every cleanup and ``cleanup_omnia`` still run.  ``setup_main`` and
-  every domain exec then call ``require_cleanups_ok`` and fail, which skips the rest, and
+  every domain stage then call ``require_cleanups_ok`` and fail, which skips the rest, and
   ``summary`` fails the pipeline.  Nothing is installed.
-* A domain exec fails -> the pipeline stops (its verify and the later domains are skipped).
+* A domain stage fails -> the pipeline stops (its verify and the later domains are skipped).
   A verify fails -> the next domain still runs.
 """
 
@@ -77,16 +77,16 @@ INTRO = """
 #   cleanup_<domain> ...: fvt_<domain> cleanup test (exec, then verify), one stage per domain
 #   cleanup_omnia: the Slurm/K8s NFS shares (test/utils), then omnia.sh --cleanup --all
 #   setup_main: omnia.sh -s, then the inputs of every domain (one stage)
-#   test_main_installation -> <domain> (exec of every tag) -> test_<domain> (verify) ... -> summary
+#   test_main_installation -> <domain> (omnia.sh --run, tag by tag) -> test_<domain> (verify) ... -> summary
 #
 # A failed initialization skips every other stage; only summary runs. A failed cleanup does not
-# stop the other cleanups, but nothing is installed after it. A failed domain exec stops the
+# stop the other cleanups, but nothing is installed after it. A failed domain stage stops the
 # pipeline (its verify and the later domains are skipped); a failed verify does not stop the next
 # domain.
 #
 # Variables: DOMAINS (default, or a regex such as repo_manager|orchestrator), SKIP_STAGES,
-# ENABLE_SETUP, ENABLE_DISCOVERY, TEST_MODE, DRY_RUN, VERBOSE, <DOMAIN>_TAGS (comma list of FVT
-# tags run in exec mode), TEST_<DOMAIN>_CMD (verify command), BAO_* (OpenBao).
+# ENABLE_SETUP, ENABLE_DISCOVERY, TEST_MODE, DRY_RUN, VERBOSE, <DOMAIN>_TAGS (comma list of
+# playbook tags run with omnia.sh --run), TEST_<DOMAIN>_CMD (verify command), BAO_* (OpenBao).
 # Inputs: clusters/<name>/inputs/<domain>/ and clusters/<name>/inputs/omnia.env.
 """
 VARIABLES = (("SSH_CONNECT_TIMEOUT", "30"), ("PIPELINE_VERSION", "4.0"), ("SKIP_STAGES", ""),

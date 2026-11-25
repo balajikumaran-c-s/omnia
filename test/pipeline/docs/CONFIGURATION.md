@@ -188,7 +188,7 @@ For each cluster, these variables are created with the cluster name prefix (e.g.
 | `<CLUSTER>_VERBOSE` | config | Verbose logging |
 | `PIPELINE_API_TOKEN` | masked, protected | Project access token (`read_api`, Reporter) used by the summary to read the stage logs for the HTML report |
 | `<CLUSTER>_CHECKOUT_MODE` | config | Omnia checkout on the OIM: `update` (default), `recreate` or `keep` |
-| `<CLUSTER>_REPO_MANAGER_TAGS` | config | Cluster pipeline: FVT tags (comma list, exec mode). Other pipelines: ansible tags |
+| `<CLUSTER>_REPO_MANAGER_TAGS` | config | Cluster pipeline: playbook tags (comma list, run with `omnia.sh --run`). Other pipelines: ansible tags |
 | `<CLUSTER>_IMAGE_BUILD_MANAGER_TAGS` | config | FVT tags (cluster pipeline) |
 | `<CLUSTER>_ORCHESTRATOR_TAGS` | config | FVT tags (cluster pipeline) |
 | `<CLUSTER>_DISCOVERY_TAGS` | config | FVT tags (cluster pipeline) |
@@ -254,8 +254,8 @@ The script automatically adds trigger jobs and CI/CD variables for each new clus
 
 ### Choose the Deploy Tags
 
-In the cluster pipeline a domain runs its FVT tags in order, in exec mode
-(`./run_validation.sh fvt_<domain> <tag> exec`). Give a comma-separated list to run only some of
+In the cluster pipeline a domain runs its playbook tags in order, in one stage
+(`./omnia.sh --run <domain> --tags <tag>`). Give a comma-separated list to run only some of
 them; empty means the default list (see [CLUSTER_PIPELINE.md](CLUSTER_PIPELINE.md#domain-stages)):
 
 ```yaml

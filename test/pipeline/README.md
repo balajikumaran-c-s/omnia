@@ -38,8 +38,8 @@ For every cluster, in this order:
    catalog are copied to `<data>/<domain>/input/<project>/` on the OIM. `fvt_main verify` tests the
    install in the next stage.
 4. **Domains**: repo_manager, image_build_manager, discovery (optional), orchestrator and
-   telemetry. A domain stage fetches its credentials from OpenBao and runs every FVT tag in exec
-   mode in the Omnia venv; the next stage verifies it (`TEST_MODE=true`). A failed exec stops the
+   telemetry. A domain stage fetches its credentials from OpenBao and runs every playbook tag, one by one in
+   one stage, with `./omnia.sh --run <domain> --tags <tag>`; the next stage verifies it (`TEST_MODE=true`). A failed tag stops the
    pipeline, a failed verify does not stop the next domain.
 5. **Summary**: a table of every job and one email with the verdict, the links and the test
    reports.

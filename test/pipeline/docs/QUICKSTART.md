@@ -108,7 +108,7 @@ The pipeline will:
    (if a cleanup fails, nothing is installed)
 3. Create the Omnia virtual environment (`omnia.sh -s`) and test it
 4. Copy the input files of all domains
-5. Deploy all selected domains in exec mode and run their validation tests
+5. Deploy all selected domains tag by tag with omnia.sh --run and run their validation tests
 6. Send a summary email
 
 ---
