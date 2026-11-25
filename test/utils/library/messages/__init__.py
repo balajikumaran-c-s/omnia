@@ -14,6 +14,7 @@
 
 """Utils domain messages package."""
 
+from .nfs_msgs import NFS_MSGS
 from .utils_msgs import TEST_LOG_MSGS, TEST_ASSERT_MSGS
 
-__all__ = ["TEST_LOG_MSGS", "TEST_ASSERT_MSGS"]
+__all__ = ["NFS_MSGS", "TEST_LOG_MSGS", "TEST_ASSERT_MSGS"]

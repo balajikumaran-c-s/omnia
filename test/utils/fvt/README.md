@@ -16,7 +16,7 @@ IDs use `UTILS_FVT_<PHASE>_<TYPE><SEQ>`:
 |---------|---------|-------------------|
 | `UTILS` | Utils domain | Fixed domain code |
 | `FVT` | Functional Verification Test level | Fixed test-level code |
-| `PHASE` | Lifecycle phase | `PRECHECK`, `SETUP`, `COLLECT`, `INSTALL_OS`, `CLEANUP_LOGS`, `CLEANUP_INSTALL_OS`, `CLEANUP` |
+| `PHASE` | Lifecycle phase | `PRECHECK`, `SETUP`, `COLLECT`, `INSTALL_OS`, `CLEANUP_LOGS`, `CLEANUP_INSTALL_OS`, `CLEANUP`, `CLEANUP_NFS_SHARES` |
 | `TYPE` | Whether the case changes or inspects state | `E` runs a playbook; `V` verifies postconditions |
 | `SEQ` | Stable sequence appended to the type | Three digits, starting at `001` |
 
@@ -37,6 +37,7 @@ verification suites in this order:
 | cleanup_logs | `cleanup_logs` |
 | cleanup_install_os | `cleanup_install_os` |
 | cleanup | `cleanup` |
+| cleanup_nfs_shares | `cleanup_nfs_shares` (explicit only, destructive) |
 
 ---
 
@@ -152,6 +153,31 @@ These cases verify combined cleanup functionality.
 | 0 | UTILS_FVT_CLEANUP_E001 | `test_deploy_cleanup` | deploy, sanity | Runs `utils.yml --tags cleanup`. | Playbook exits successfully. |
 | 1 | UTILS_FVT_CLEANUP_V001 | `test_cleanup_all_logs_cleaned` | sanity | Verifies all log artifacts cleaned. | All log cleanup checks pass. |
 | 2 | UTILS_FVT_CLEANUP_V002 | `test_cleanup_all_install_os_cleaned` | sanity | Verifies all install_os artifacts cleaned. | Temp dir and NFS cleaned. |
+
+---
+
+## Cleanup NFS Shares Test Cases (tag `cleanup_nfs_shares`)
+
+These cases empty the Slurm and Kubernetes NFS shares (`nfs_slurm` and `nfs_k8s` of the orchestrator
+`storage_config.yml`, see `nfs_shares` and `nfs_storage_config` in `test_config.yml`). They need a
+local run as root on the execution OIM. The destructive cases run only with `--marker destructive`:
+
+```bash
+./run_validation.sh fvt_utils cleanup_nfs_shares verify --marker sanity        # read-only check
+./run_validation.sh fvt_utils cleanup_nfs_shares test   --marker destructive   # empty, then check
+```
+
+`cleanup_nfs_shares` is its own tag, so `fvt_utils cleanup` (the utils cleanup) never touches the
+NFS shares.
+
+| Sequence | TC ID | Test | Markers | Validation | Pass criteria |
+|----------|-------|------|---------|------------|---------------|
+| 0 | UTILS_FVT_CLEANUP_NFS_SHARES_E001 | `test_deploy_cleanup_nfs_shares` | deploy, functional, destructive | Mounts every share read-only first, then empties each share (the exports stay). | Every share was reachable and emptied. |
+| 1 | UTILS_FVT_CLEANUP_NFS_SHARES_V001 | `test_cleanup_nfs_shares_reachable` | sanity | Mounts every configured share read-only and unmounts it; nothing is deleted. | Every share can be mounted. |
+| 2 | UTILS_FVT_CLEANUP_NFS_SHARES_V002 | `test_cleanup_nfs_shares_empty` | functional, destructive | Mounts every share read-only and counts its entries. | No entry is left in any share. |
+
+A missing `storage_config.yml`, no NFS mount in it, or a run that is not local and root skips the
+cases with the reason.
 
 ---
 
@@ -299,9 +325,10 @@ generation, tag routing, cleanup, and Orchestrator acceptance.
 | Cleanup Logs | 1 | 3 | 4 |
 | Cleanup Install OS | 1 | 3 | 4 |
 | Cleanup (combined) | 1 | 2 | 3 |
+| Cleanup NFS Shares | 1 | 2 | 3 |
 | Negative (Collect) | 0 | 3 | 3 |
 | Negative (Install OS) | 0 | 4 | 4 |
-| **Total** | **15** | **96** | **111** |
+| **Total** | **16** | **98** | **114** |
 
 ---
 

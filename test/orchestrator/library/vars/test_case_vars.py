@@ -1937,6 +1937,10 @@ TEST_CASES: dict[str, dict[str, str]] = {
     **PXEBOOT_TEST_CASES,
     **CLEANUP_TEST_CASES,
     **NFT_TEST_CASES,
+    "deploy_full_playbook": {
+        "id": "ORCH_FVT_FULL_PLAYBOOK_E001",
+        "title": "Deploy orchestrator (complete playbook, no tags)",
+    },
 }
 
 
