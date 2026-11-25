@@ -118,6 +118,7 @@ def pytest_configure(config):
         "cleanup_backup_oim_logs": "OIM log backup cleanup tests",
         "slurm_config_util": "Slurm config backup/cleanup/rollback tests",
         "cleanup_slurm_config_backups": "Slurm config backup cleanup tests",
+        "cleanup_nfs_shares": "NFS share cleanup tests (empties the Slurm and K8s shares)",
         "oci_image_ingest": "OCI image ingest tests (registry automation)",
         "nft": "Non-functional tests (performance, security, logging)",
         "destructive": "Deletes live state (e.g. the active Slurm config share). "

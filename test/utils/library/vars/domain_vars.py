@@ -42,6 +42,7 @@ FVT_TAGS: List[str] = [
     "cleanup_logs",
     "cleanup_install_os",
     "cleanup",
+    "cleanup_nfs_shares",
 ]
 
 # =====================================================================
@@ -56,6 +57,8 @@ MARKERS: List[str] = [
     "x86_64",
     "aarch64",
     "oci_image_ingest",
+    "cleanup",
+    "destructive",
 ]
 
 # =====================================================================
@@ -73,6 +76,7 @@ SUITES: Dict[str, List[str]] = {
     "cleanup_logs": ["cleanup_logs"],
     "cleanup_install_os": ["cleanup_install_os"],
     "cleanup": ["cleanup"],
+    "cleanup_nfs_shares": ["cleanup_nfs_shares"],
 }
 
 # Ordered, non-destructive lifecycle used by an untagged ``exec`` or ``test``.
@@ -100,6 +104,7 @@ EXCLUDE_TAGS: List[str] = [
     "cleanup",
     "cleanup_logs",
     "cleanup_install_os",
+    "cleanup_nfs_shares",
     "backup_oim_logs",
     "slurm_config_util",
     "oci_image_ingest",

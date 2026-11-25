@@ -69,6 +69,12 @@ from .common_vars import (
     OCI_SAFE_CHAR_PATTERN,
 )
 
+from .nfs_vars import (
+    NFS_SHARE_NAMES,
+    STORAGE_CONFIG_FILE,
+    STORAGE_CONFIG_DOMAIN,
+)
+
 from .test_case_vars import TEST_CASES, LEGACY_ID_MAP
 
 from .domain_vars import (
@@ -87,6 +93,9 @@ from .domain_vars import (
 )
 
 __all__ = [
+    "NFS_SHARE_NAMES",
+    "STORAGE_CONFIG_FILE",
+    "STORAGE_CONFIG_DOMAIN",
     "PLAYBOOK_UTILS",
     "PLAYBOOK_COLLECT",
     "PLAYBOOK_INSTALL_OS",

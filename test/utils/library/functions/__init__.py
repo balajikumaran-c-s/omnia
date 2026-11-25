@@ -35,6 +35,16 @@ from omnia_auto import (
 )
 
 # --- Domain-specific functions ---
+from .nfs_cleanup_func import (
+    can_run_locally,
+    get_storage_config_path,
+    get_share_names,
+    get_protected_paths,
+    get_nfs_targets,
+    check_nfs_shares_reachable,
+    empty_nfs_shares,
+    check_nfs_shares_empty,
+)
 from .utils_func import (
     check_target_connectivity,
     check_env_var,

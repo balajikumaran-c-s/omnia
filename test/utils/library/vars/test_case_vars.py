@@ -525,6 +525,22 @@ TEST_CASES = {
     },
 
     # ══════════════════════════════════════════════════════════════════════════
+    # CLEANUP_NFS_SHARES SCENARIO
+    # ══════════════════════════════════════════════════════════════════════════
+    "deploy_cleanup_nfs_shares": {
+        "id": "UTILS_FVT_CLEANUP_NFS_SHARES_E001",
+        "title": "Empty the Slurm and K8s NFS shares (destructive)",
+    },
+    "cleanup_nfs_shares_reachable": {
+        "id": "UTILS_FVT_CLEANUP_NFS_SHARES_V001",
+        "title": "Verify every configured NFS share can be mounted read-only",
+    },
+    "cleanup_nfs_shares_empty": {
+        "id": "UTILS_FVT_CLEANUP_NFS_SHARES_V002",
+        "title": "Verify the Slurm and K8s NFS shares are empty (after the cleanup)",
+    },
+
+    # ══════════════════════════════════════════════════════════════════════════
     # NEGATIVE TEST CASES - SLURM_CONFIG_UTIL
     # ══════════════════════════════════════════════════════════════════════════
     "slurm_config_backup_missing_omnia_config_fails": {

@@ -118,3 +118,12 @@ run_id: ""
 # test_backup_oim_logs_nfs_export_mounted. Leave empty to skip that test in
 # environments without a reachable NFS share.
 backup_nfs_export: ""
+
+# cleanup_nfs_shares scenario (destructive, opt-in with --marker destructive): the mounts of the
+# orchestrator storage_config.yml that are emptied, and the file to read. Empty
+# nfs_storage_config means <OMNIA_DATA_PATH>/orchestrator/input/<OMNIA_PROJECT_NAME>/storage_config.yml
+# of the execution OIM. The scenario needs a local run as root on that OIM.
+nfs_shares:
+  - nfs_slurm
+  - nfs_k8s
+nfs_storage_config: ""
